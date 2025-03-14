@@ -165,7 +165,7 @@ class ActorRolloutRefWorker(MegatronWorker):
             print(f'Model config after override: {actor_model_config}')
 
         self.share_embeddings_and_output_weights = getattr(actor_model_config, "tie_word_embeddings", False)
-        self.architecture = getattr(actor_model_config, "architecture", None)
+        self.architecture = getattr(actor_model_config, "architectures", None)
 
         def megatron_actor_model_provider(pre_process, post_process):
             from verl.utils.model import get_parallel_model_from_config
@@ -439,6 +439,13 @@ class ActorRolloutRefWorker(MegatronWorker):
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def load_checkpoint(self, checkpoint_path, **kwargs):
+        '''
+        load_megatron_model_weights(self.config,
+                                    self.actor_model_config,
+                                    self.actor_module,
+                                    params_dtype=self.config.megatron_config.params_dtype,
+                                    is_value_model=False)
+        '''
         pass
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
