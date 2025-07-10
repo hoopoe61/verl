@@ -382,7 +382,7 @@ class MegatronPPOActor(BasePPOActor):
                 if not forward_only:
                     entropy_loss = agg_loss(loss_mat=entropy, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
                     entropy_coeff = meta_info["entropy_coeff"]
-                    #policy_loss = pg_loss - entropy_coeff * entropy_loss; verl bug: https://github.com/volcengine/verl/issues/1970
+                    policy_loss = pg_loss - entropy_coeff * entropy_loss
                 else:
                     ret_entropy = entropy
 
@@ -403,8 +403,6 @@ class MegatronPPOActor(BasePPOActor):
                 # return loss and stats
                 stats.update(
                     {
-                        "actor/entropy_loss": entropy_loss.detach().item(),
-                        "actor/policy_loss": policy_loss.detach().item(),
                         "actor/pg_loss": pg_loss.detach().item(),
                         "actor/pg_clipfrac": pg_clipfrac.detach().item(),
                         "actor/ppo_kl": ppo_kl.detach().item(),
@@ -530,7 +528,6 @@ class MegatronPPOActor(BasePPOActor):
                 chunk.zero_grad_buffer()
 
             calculate_entropy = self.config.entropy_coeff != 0
-            calculate_entropy = True
             if data.meta_info.get("micro_batch_size", None) is not None:
                 micro_batch_size = data.meta_info["micro_batch_size"]
             else:
@@ -559,4 +556,3 @@ class MegatronPPOActor(BasePPOActor):
         self.prof.stop_trace()
         get_torch_device().empty_cache()
         return metrics
-
