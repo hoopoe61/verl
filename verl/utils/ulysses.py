@@ -269,7 +269,7 @@ def gather_outpus_and_unpad(
     return x
 
 
-def ulysses_pad(input_ids_rmpad: torch.Tensor, position_ids_rmpad: Optional[torch.Tensor] = None, sp_size: int = 1):
+def ulysses_pad(input_ids_rmpad: torch.Tensor, position_ids_rmpad: Optional[torch.Tensor] = None, loss_mask_rmpad: Optional[torch.Tensor] = None, sp_size: int = 1):
     if position_ids_rmpad is not None:
         assert position_ids_rmpad.size(-2) == 1
         assert input_ids_rmpad.size(-1) == position_ids_rmpad.size(-1)
@@ -284,10 +284,12 @@ def ulysses_pad(input_ids_rmpad: torch.Tensor, position_ids_rmpad: Optional[torc
             if position_ids_rmpad.dim() == 3:
                 pad_pos_ids = pad_pos_ids.unsqueeze(0).repeat(3, 1, 1)
             position_ids_rmpad = torch.cat((position_ids_rmpad, pad_pos_ids), dim=-1)
-    return input_ids_rmpad, position_ids_rmpad, pad_size
+        if loss_mask_rmpad is not None:
+            loss_mask_rmpad = torch.nn.functional.pad(loss_mask_rmpad, (0, pad_size), value=0)
+    return input_ids_rmpad, position_ids_rmpad, loss_mask_rmpad, pad_size
 
 
-def ulysses_pad_and_slice_inputs(input_ids_rmpad: torch.Tensor, position_ids_rmpad: Optional[torch.Tensor] = None, sp_size: int = 1):
+def ulysses_pad_and_slice_inputs(input_ids_rmpad: torch.Tensor, position_ids_rmpad: Optional[torch.Tensor] = None, loss_mask_rmpad: Optional[torch.Tensor] = None, sp_size: int = 1):
     """
     Pad and slice input_ids to be divisible by sp_size
     Pad position_ids to be divisible by sp_size.
@@ -306,11 +308,13 @@ def ulysses_pad_and_slice_inputs(input_ids_rmpad: torch.Tensor, position_ids_rmp
         torch.Tensor: padded and sliced position_ids
         int: pad size
     """
-    input_ids_rmpad, position_ids_rmpad, pad_size = ulysses_pad(input_ids_rmpad, position_ids_rmpad, sp_size)
+    input_ids_rmpad, position_ids_rmpad, loss_mask_rmpad, pad_size = ulysses_pad(input_ids_rmpad, position_ids_rmpad, loss_mask_rmpad, sp_size)
     input_ids_rmpad = slice_input_tensor(input_ids_rmpad, dim=1, padding=False)
     if position_ids_rmpad is not None:
         position_ids_rmpad = slice_input_tensor(position_ids_rmpad, dim=1, padding=False)
-    return input_ids_rmpad, position_ids_rmpad, pad_size
+    if loss_mask_rmpad is not None:
+        loss_mask_rmpad = slice_input_tensor(loss_mask_rmpad, dim=1, padding=False)
+    return input_ids_rmpad, position_ids_rmpad, loss_mask_rmpad, pad_size
 
 
 def validate_ulysses_config(num_heads, ulysses_sequence_size):

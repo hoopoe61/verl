@@ -240,6 +240,8 @@ class FSDPCheckpointManager(BaseCheckpointManager):
                 # Some model's name_or_path is empty if not initialized from pretrained,
                 # in this cases, we don't save generation config.
                 generation_config = GenerationConfig.from_pretrained(model_config.name_or_path)
+                generation_config.temperature=None
+                generation_config.top_p=None
                 generation_config.save_pretrained(hf_config_tokenizer_path)
             else:
                 generation_config = None
