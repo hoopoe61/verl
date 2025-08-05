@@ -64,7 +64,7 @@ python3 -m verl.trainer.main_dpo \
     data.shuffle=$shuffle \
     data.seed=$seed \
     data.train_batch_size=${train_bsz} \
-    data.val_batch_size=${train_prompt_bsz} \
+    data.val_batch_size=${train_bsz} \
     data.max_length=${max_length} \
     data.max_prompt_length=${max_prompt_length} \
     actor_ref.model.use_remove_padding=True \
