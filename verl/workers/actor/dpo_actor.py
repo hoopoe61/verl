@@ -23,30 +23,35 @@ import os
 from typing import Tuple, Union
 
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from trl.trainer.dpo_config import FDivergenceConstants, FDivergenceType
 from trl.trainer.dpo_trainer import flush_left, flush_right
-
-from trl.trainer.dpo_config import FDivergenceType, FDivergenceConstants
 from trl.trainer.utils import cap_exp
 
 import verl.utils.torch_functional as verl_F
 from verl import DataProto
-from verl.trainer.ppo.core_algos import agg_loss, compute_policy_loss, get_policy_loss_fn, kl_penalty
+from verl.trainer.ppo.core_algos import (agg_loss, compute_policy_loss,
+                                         get_policy_loss_fn, kl_penalty)
 from verl.utils.debug import GPUMemoryLogger
-from verl.utils.device import get_device_id, get_device_name, is_cuda_available, is_npu_available
+from verl.utils.device import (get_device_id, get_device_name,
+                               is_cuda_available, is_npu_available)
 from verl.utils.fsdp_utils import FSDPModule, fsdp2_clip_grad_norm_
 from verl.utils.py_functional import append_to_dict
-from verl.utils.seqlen_balancing import get_reverse_idx, rearrange_micro_batches
+from verl.utils.seqlen_balancing import (get_reverse_idx,
+                                         rearrange_micro_batches)
 from verl.utils.torch_functional import logprobs_from_logits
-from verl.utils.ulysses import gather_outpus_and_unpad, ulysses_pad, ulysses_pad_and_slice_inputs
+from verl.utils.ulysses import (gather_outpus_and_unpad, ulysses_pad,
+                                ulysses_pad_and_slice_inputs)
 from verl.workers.actor import BasePPOActor
 
 if is_cuda_available:
-    from flash_attn.bert_padding import index_first_axis, pad_input, rearrange, unpad_input
+    from flash_attn.bert_padding import (index_first_axis, pad_input,
+                                         rearrange, unpad_input)
 elif is_npu_available:
-    from transformers.integrations.npu_flash_attention import index_first_axis, pad_input, rearrange, unpad_input
+    from transformers.integrations.npu_flash_attention import (
+        index_first_axis, pad_input, rearrange, unpad_input)
 
 
 __all__ = ["DataParallelDPOActor"]
@@ -454,7 +459,7 @@ class DataParallelDPOActor(BasePPOActor):
                     #需要保证compute_ref_log_prob 和 update_policy的执行顺序是相同的；
                     losses, _, _ = self.dpo_loss(chosen_logps, rejected_logps, data["ref_chosen_logps"], data["ref_rejected_logps"])
                     losses = losses.mean()
-                    #losses = losses / self.gradient_accumulation
+                    losses = losses / self.gradient_accumulation
                     losses.backward()
                     
                     metric_loss.append(losses.detach().item())
