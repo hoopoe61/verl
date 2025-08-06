@@ -427,7 +427,7 @@ class ActorRefWorker(Worker, DistProfilerExtension):
                 optim_config = None
                 fsdp_config = OmegaConf.create()
 
-            local_path = copy_to_local(self.config.model.path, use_shm=use_shm)
+            local_path = copy_to_local(self.config.actor.path, use_shm=use_shm)
             (
                 self.actor_module_fsdp,
                 self.actor_optimizer,
@@ -468,7 +468,7 @@ class ActorRefWorker(Worker, DistProfilerExtension):
 
 
         if self._is_ref:
-            local_path = copy_to_local(self.config.model.path, use_shm=use_shm)
+            local_path = copy_to_local(self.config.ref.path, use_shm=use_shm)
             self.ref_module_fsdp, _, _, ref_model_config = self._build_model_optimizer(
                 model_path=local_path,
                 fsdp_config=self.config.ref.fsdp_config,

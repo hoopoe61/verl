@@ -95,15 +95,21 @@ class TaskRunner:
 
         # Download the checkpoint from HDFS to the local machine.
         # `use_shm` determines whether to use shared memory, which could lead to faster model loading if turned on
-        local_path = copy_to_local(config.actor_ref.model.path, use_shm=config.actor_ref.model.get("use_shm", False)) #按照model路径的模型copy
+        # 默认使用actor中的PATH，业务自身需要保证actor 和 ref使用的tokenizer是一致的；
+        actor_local_path = copy_to_local(config.actor_ref.actor.path, use_shm=config.actor_ref.model.get("use_shm", False)) #按照model路径的模型copy
+        ref_local_path = copy_to_local(config.actor_ref.ref.path, use_shm=config.actor_ref.model.get("use_shm", False)) #按照model路径的模型copy
 
         # Instantiate the tokenizer and processor.
         from verl.utils import hf_processor, hf_tokenizer
 
         trust_remote_code = config.data.get("trust_remote_code", False)
-        tokenizer = hf_tokenizer(local_path, trust_remote_code=trust_remote_code) #加载tokenizer模型
+        tokenizer = hf_tokenizer(actor_local_path, trust_remote_code=trust_remote_code) #加载tokenizer模型
+        ref_tokenizer = hf_tokenizer(ref_local_path, trust_remote_code=trust_remote_code)
+        assert tokenizer.pad_token_id == ref_tokenizer.pad_token_id, f"actor tokenizer is not same with ref tokenizer, actor tokenizer pad_token_id: {tokenizer.pad_token_id} != ref tokenizer pad_token_id: {ref_tokenizer.pad_token_id}"
+        assert tokenizer.vocab_size == ref_tokenizer.vocab_size, f"actor tokenizer is not same with ref tokenizer, actor tokenizer vocab_size: {tokenizer.vocab_size} != ref tokenizer vocab_size: {ref_tokenizer.vocab_size}"
+        del ref_tokenizer
         # Used for multimodal LLM, could be None
-        processor = hf_processor(local_path, trust_remote_code=trust_remote_code, use_fast=True)
+        processor = hf_processor(actor_local_path, trust_remote_code=trust_remote_code, use_fast=True)
 
 
         assert config.actor_ref.actor.strategy == "fsdp", f"only fsdp is verified, {config.actor_ref.actor.strategy} may lead to error result."

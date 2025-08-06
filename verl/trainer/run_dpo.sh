@@ -2,11 +2,11 @@
 set -xeuo pipefail
 
 project_name='DPO'
-exp_name='DPO-NBG3-4B'
+exp_name='DPO-$$$3-4B'
 
 
-TRAIN_FILE=/code/chenzongchao/SFT/train-code/gutao_dpo/tmp_train.jsonl
-TEST_FILE=/code/chenzongchao/SFT/DeepSpeed-Chat/SFT_train_v1/DPO_data/dpo-resv10.9-32w_pair-1117_test.jsonl
+TRAIN_FILE=/code/***/SFT/train-code/******_dpo/tmp_train.jsonl
+TEST_FILE=/code/***/SFT/DeepSpeed-Chat/SFT_train_v1/DPO_data/dpo-resv10.9-32w_pair-1117_test.jsonl
 max_length=null #一个sample的promt + chosen(promt + rejected)最大长度，不设置按照flush_left处理
 max_prompt_length=512 #promt部分的最大长度，默认值是512
 shuffle=True
@@ -15,8 +15,9 @@ truncation="left"
 
 
 # Paths
-#MODEL_PATH="/code/gutao/verl/compare_dapo/Qwen3-4B"
-MODEL_PATH="/code/gutao/verl/compare_grpo/nbg3b-thinking-0520"
+#MODEL_PATH="/code/******/verl/compare_dapo/Qwen3-4B"
+actor_model_path="/code/******/verl/compare_grpo/$$$3b-thinking-0520"
+ref_model_path="/code/***/SFT/train-code/******_dpo/dpo/0805/iter_0020500_hf"
 
 
 # resource
@@ -24,9 +25,10 @@ NNODES=1 #这是节点的数量
 n_gpus_per_node=8
 
 
-train_bsz=8 #一个step对应的micro batch size大小
+train_bsz=8 #一个step对应的global batch size大小;
 sp_size=4
-per_device_bs=1 #这个值可以根据显存情况设置，设置的越小显存占用越小，设置的过大会因为： dp * per_device_bs > train_bsz报错；
+per_actor_device_bsz=1 #一个dp对应的actor训练micro batch size大小，这个值可以根据显存情况设置，设置的越小显存占用越小，设置的过大会因为： dp * per_actor_device_bsz > train_bsz报错;
+per_ref_device_bsz=1  #一个dp对应的ref前向micro batch size大小， 这个值可以根据显存情况设置，设置的越小显存占用越小，设置的过大会因为： dp * per_ref_device_bsz > train_bsz报错；ref模型大可以设置的小一些;
 
 
 lr=2e-7
@@ -69,8 +71,8 @@ python3 -m verl.trainer.main_dpo \
     data.max_prompt_length=${max_prompt_length} \
     actor_ref.model.use_remove_padding=True \
     actor_ref.model.use_fused_kernels=${use_fused_kernels} \
-    actor_ref.model.path="${MODEL_PATH}" \
     actor_ref.model.enable_gradient_checkpointing=False \
+    actor_ref.actor.path="$actor_model_path" \
     actor_ref.actor.beta=$beta \
     actor_ref.actor.loss_type="$loss_type" \
     actor_ref.actor.optim.lr=$lr \
@@ -78,13 +80,14 @@ python3 -m verl.trainer.main_dpo \
     actor_ref.actor.optim.weight_decay=$weight_decay \
     actor_ref.actor.use_dynamic_bsz=${use_dynamic_bsz} \
     actor_ref.actor.ppo_mini_batch_size=${train_bsz} \
-    actor_ref.actor.ppo_micro_batch_size_per_gpu=$per_device_bs \
+    actor_ref.actor.ppo_micro_batch_size_per_gpu=$per_actor_device_bsz \
     actor_ref.actor.fsdp_config.param_offload=${offload} \
     actor_ref.actor.fsdp_config.optimizer_offload=${offload} \
     actor_ref.actor.grad_clip=$grad_clip \
     actor_ref.actor.ulysses_sequence_parallel_size=${sp_size} \
     actor_ref.actor.fsdp_config.fsdp_size=-1 \
-    actor_ref.ref.log_prob_micro_batch_size_per_gpu=$per_device_bs \
+    actor_ref.ref.path="$ref_model_path" \
+    actor_ref.ref.log_prob_micro_batch_size_per_gpu=$per_ref_device_bsz \
     actor_ref.ref.fsdp_config.param_offload=${offload} \
     actor_ref.ref.ulysses_sequence_parallel_size=${sp_size} \
     trainer.logger=['console','tensorboard'] \

@@ -111,7 +111,7 @@ actor_ref:
   model:
 
     # Huggingface model path. This can be either local path or HDFS path.
-    path: ~/models/deepseek-llm-7b-chat
+    #path: ~/models/deepseek-llm-7b-chat
 
     # Custom chat template for the model.
     custom_chat_template: null
@@ -162,10 +162,16 @@ actor_ref:
   # actor configs
   actor:
 
+    path: ~/models/deepseek-llm-7b-chat
+
     f_divergence_type: "FDivergenceType.REVERSE_KL"
+
     loss_type: "hinge"
+
     beta: 0.01
+
     label_smoothing: 0.0
+
     reference_free: false
 
     # max_length for training; 不要直接修改，使用data.max_length间接修改
@@ -341,6 +347,8 @@ actor_ref:
   # Reference model config.
   # Reference model will be enabled when actor.use_kl_loss or/and algorithm.use_kl_in_reward is/are True.
   ref:
+
+    path: null
 
     # max_length for training; 不要直接修改，使用data.max_length间接修改
     max_length: ${data.max_length}

@@ -454,7 +454,7 @@ class DataParallelDPOActor(BasePPOActor):
                     #需要保证compute_ref_log_prob 和 update_policy的执行顺序是相同的；
                     losses, _, _ = self.dpo_loss(chosen_logps, rejected_logps, data["ref_chosen_logps"], data["ref_rejected_logps"])
                     losses = losses.mean()
-                    losses = losses / self.gradient_accumulation
+                    #losses = losses / self.gradient_accumulation
                     losses.backward()
                     
                     metric_loss.append(losses.detach().item())
