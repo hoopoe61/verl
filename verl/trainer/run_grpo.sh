@@ -16,8 +16,8 @@ export SWANLAB_MODE=local
 node_num=$node
 per_device_bs=1
 acc_steps=1
-train_files=/***/train.parquet
-test_files=/***/test.parquet
+train_files=/***/train.parquet #根据情况修改
+test_files=/***/test.parquet #根据情况修改
 save_freq=100
 test_freq=20
 total_epochs=1
@@ -38,8 +38,8 @@ num_worker=$(($node_num * 8 * 4))
 ppo_mini_bs=$(($per_device_bs * $num_worker * $acc_steps))
 interact_bs=$(($ppo_mini_bs))
 
-max_prompt_length=1024
-max_response_length=15360
+max_prompt_length=1024 #根据情况修改
+max_response_length=15360 #根据情况修改
 max_num_batched_tokens=$(($max_prompt_length+$max_response_length))
 
 
@@ -52,7 +52,7 @@ python3 -m verl.trainer.main_ppo \
     data.max_prompt_length=$max_prompt_length \
     data.max_response_length=$max_response_length \
     data.truncation='left' \
-    data.shuffle=False \
+    data.shuffle=True \
     actor_rollout_ref.model.path="$model_path" \
     actor_rollout_ref.actor.optim.lr=3.0e-06 \
     actor_rollout_ref.model.use_remove_padding=True \
@@ -86,5 +86,5 @@ python3 -m verl.trainer.main_ppo \
     trainer.save_freq=$save_freq \
     trainer.test_freq=$test_freq \
     trainer.total_epochs=$total_epochs \
-    trainer.val_before_train=False \
-    trainer.balance_batch=False \
+    trainer.val_before_train=True \
+    trainer.balance_batch=True \
