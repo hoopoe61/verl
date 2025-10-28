@@ -105,7 +105,7 @@ def load_reward_manager(config, tokenizer, num_examine, **reward_kwargs):
     # registered via `verl.workers.reward_manager.register`
     # By default reward_manager is set to naive (NaiveRewardManager)
     reward_manager_name = config.reward_model.get("reward_manager", "naive")
-    reward_manager_cls = get_reward_manager_cls(reward_manager_name)
+    reward_manager_cls = get_reward_manager_cls(reward_manager_name) #得到naive的cls name；naive对应的是：NaiveRewardManager
 
     # Try to get a custom reward function based on the configuration
     compute_score = get_custom_reward_fn(config)
@@ -126,10 +126,10 @@ def load_reward_manager(config, tokenizer, num_examine, **reward_kwargs):
                 memory_limit_mb=memory_limit_mb,
             )
         else:
-            final_compute_score = default_compute_score
+            final_compute_score = default_compute_score #默认情况下传入的是：default_compute_score的计算逻辑
 
     # Instantiate and return the reward manager with the specified parameters
-    return reward_manager_cls(
+    return reward_manager_cls( #完成NaiveRewardManager的初始化流程
         tokenizer=tokenizer,
         num_examine=num_examine,
         compute_score=final_compute_score,

@@ -22,6 +22,7 @@ defaults:
   - ref@actor_rollout_ref.ref: dp_ref
 
   # Rollout model config.
+  # actor_rollout_ref.rollout: trainer/config/rollout/rollout.yaml
   - rollout@actor_rollout_ref.rollout: rollout
 
   # Critic model config.

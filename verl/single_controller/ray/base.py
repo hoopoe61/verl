@@ -22,10 +22,12 @@ import ray
 from ray.experimental.state.api import get_actor
 from ray.util import list_named_actors
 from ray.util.placement_group import PlacementGroup, placement_group
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy, PlacementGroupSchedulingStrategy
+from ray.util.scheduling_strategies import (NodeAffinitySchedulingStrategy,
+                                            PlacementGroupSchedulingStrategy)
 
 from verl.protocol import DataProto, _padding_size_key
-from verl.single_controller.base import ClassWithInitArgs, ResourcePool, Worker, WorkerGroup
+from verl.single_controller.base import (ClassWithInitArgs, ResourcePool,
+                                         Worker, WorkerGroup)
 from verl.single_controller.base.decorator import MAGIC_ATTR, Dispatch
 from verl.utils.py_functional import temp_env_var
 
@@ -114,7 +116,7 @@ class RayResourcePool(ResourcePool):
 
         bundle = {"CPU": self.max_colocate_count}
         if self.use_gpu:
-            bundle[device_name] = 1
+            bundle[device_name] = 1 #默认就是分配1个GPU
             if self.accelerator_type is not None:
                 bundle[self.accelerator_type] = 1e-4
         pg_scheme = [[bundle.copy() for _ in range(process_count)] for process_count in self._store]
@@ -263,7 +265,7 @@ class RayWorkerGroup(WorkerGroup):
     def __init__(
         self,
         resource_pool: RayResourcePool = None,
-        ray_cls_with_init: RayClassWithInitArgs = None,
+        ray_cls_with_init: RayClassWithInitArgs = None, #是一个加工以后的RayClassWithInitArgs
         bin_pack: bool = True,
         name_prefix: str = None,
         detached=False,
@@ -351,7 +353,7 @@ class RayWorkerGroup(WorkerGroup):
         strategy = "PACK"
         if bin_pack:
             strategy = "STRICT_PACK"
-        pgs = resource_pool.get_placement_groups(strategy=strategy, device_name=self.device_name)
+        pgs = resource_pool.get_placement_groups(strategy=strategy, device_name=self.device_name) #这个地方获取到了pg；
         world_size = resource_pool.world_size
         self._world_size = world_size
         # cia.add_kwarg("_world_size", world_size)
@@ -359,7 +361,7 @@ class RayWorkerGroup(WorkerGroup):
 
         rank = -1
         local_world_size = resource_pool.store[0]
-        for pg_idx, pg in enumerate(sort_placement_group_by_node_ip(pgs)):
+        for pg_idx, pg in enumerate(sort_placement_group_by_node_ip(pgs)): #估计每个只是
             assert local_world_size <= pg.bundle_count, f"when generating for {self.name_prefix}, for the "
             for local_rank in range(local_world_size):
                 rank += 1

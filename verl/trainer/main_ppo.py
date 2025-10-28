@@ -127,7 +127,8 @@ class TaskRunner:
         if config.actor_rollout_ref.actor.strategy in {"fsdp", "fsdp2"}:
             assert config.critic.strategy in {"fsdp", "fsdp2"}
             from verl.single_controller.ray import RayWorkerGroup
-            from verl.workers.fsdp_workers import ActorRolloutRefWorker, AsyncActorRolloutRefWorker
+            from verl.workers.fsdp_workers import (ActorRolloutRefWorker,
+                                                   AsyncActorRolloutRefWorker)
 
             use_legacy_worker_impl = config.trainer.get("use_legacy_worker_impl", "auto")
             if use_legacy_worker_impl in ["auto", "enable"]:
@@ -151,8 +152,11 @@ class TaskRunner:
 
         elif config.actor_rollout_ref.actor.strategy == "megatron":
             assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
-            from verl.single_controller.ray.megatron import NVMegatronRayWorkerGroup
-            from verl.workers.megatron_workers import ActorRolloutRefWorker, AsyncActorRolloutRefWorker, CriticWorker
+            from verl.single_controller.ray.megatron import \
+                NVMegatronRayWorkerGroup
+            from verl.workers.megatron_workers import (
+                ActorRolloutRefWorker, AsyncActorRolloutRefWorker,
+                CriticWorker)
 
             actor_rollout_cls = (
                 AsyncActorRolloutRefWorker
@@ -207,7 +211,7 @@ class TaskRunner:
         # Load the reward manager for training and validation.
         reward_fn = load_reward_manager(
             config, tokenizer, num_examine=0, **config.reward_model.get("reward_kwargs", {})
-        )
+        ) #load_reward_manager完成对于manager的初始化，比如：NaiveRewardManager
         val_reward_fn = load_reward_manager(
             config, tokenizer, num_examine=1, **config.reward_model.get("reward_kwargs", {})
         )

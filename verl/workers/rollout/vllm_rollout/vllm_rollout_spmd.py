@@ -52,7 +52,8 @@ from vllm.worker.worker_base import WorkerWrapperBase
 
 from verl import DataProto
 from verl.utils.profiler import GPUMemoryLogger
-from verl.utils.torch_functional import get_response_mask, pad_2d_list_to_length
+from verl.utils.torch_functional import (get_response_mask,
+                                         pad_2d_list_to_length)
 from verl.workers.rollout.base import BaseRollout
 
 logger = logging.getLogger(__file__)
@@ -200,7 +201,7 @@ class vLLMRollout(BaseRollout):
         for k in config.keys():
             if hasattr(SamplingParams(), str(k)) and k != "seed":
                 kwargs[k] = config.get(k)
-        kwargs["n"] = 1  # already repeat in ray_trainer
+        kwargs["n"] = 1  # already repeat in ray_trainer; 需要注意这里的实现；
         print(f"kwargs: {kwargs}")
         self.sampling_params = SamplingParams(**kwargs)
 
@@ -318,7 +319,7 @@ class vLLMRollout(BaseRollout):
         with self.update_sampling_params(**kwargs):
             outputs = self.inference_engine.generate(
                 prompts=vllm_inputs,  # because we have already convert it to prompt token id
-                sampling_params=self.sampling_params,
+                sampling_params=self.sampling_params, #通过这里控制的generate的参数；
                 lora_request=lora_requests,
                 use_tqdm=False,
             )
@@ -340,7 +341,7 @@ class vLLMRollout(BaseRollout):
 
             response = pad_2d_list_to_length(response, self.pad_token_id, max_length=self.config.response_length).to(
                 idx.device
-            )
+            ) #response pad到相同的长度
             if self.config.calculate_log_probs:
                 rollout_log_probs = pad_2d_list_to_length(
                     rollout_log_probs, -1, max_length=self.config.response_length
@@ -348,7 +349,7 @@ class vLLMRollout(BaseRollout):
                 rollout_log_probs = rollout_log_probs.to(torch.float32)
 
             seq = torch.cat([idx, response], dim=-1)
-
+        #下面的内容主要是生成position 和 mask的相关内容；
         response_length = response.size(1)
         delta_position_id = torch.arange(1, response_length + 1, device=position_ids.device)
         delta_position_id = delta_position_id.unsqueeze(0).expand(batch_size, -1)

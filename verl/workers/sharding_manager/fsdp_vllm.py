@@ -19,8 +19,10 @@ import time
 from collections import OrderedDict
 
 from torch.distributed.device_mesh import DeviceMesh
-from torch.distributed.fsdp.api import FullStateDictConfig, ShardedStateDictConfig, StateDictType
-from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp.api import (FullStateDictConfig,
+                                        ShardedStateDictConfig, StateDictType)
+from torch.distributed.fsdp.fully_sharded_data_parallel import \
+    FullyShardedDataParallel as FSDP
 
 try:
     # for torch 2.5+
@@ -35,16 +37,17 @@ from verl.protocol import all_gather_data_proto
 from verl.third_party.vllm import LLM
 from verl.third_party.vllm import parallel_state as vllm_ps
 from verl.utils.device import get_device_id, get_device_name, get_torch_device
-from verl.utils.fsdp_utils import (
-    fsdp_version,
-    layered_summon_lora_params,
-    load_fsdp_model_to_gpu,
-    offload_fsdp_model_to_cpu,
-)
-from verl.utils.model import check_exclude_modules, check_target_modules, convert_weight_keys
-from verl.utils.profiler import GPUMemoryLogger, log_gpu_memory_usage, simple_timer
+from verl.utils.fsdp_utils import (fsdp_version, layered_summon_lora_params,
+                                   load_fsdp_model_to_gpu,
+                                   offload_fsdp_model_to_cpu)
+from verl.utils.model import (check_exclude_modules, check_target_modules,
+                              convert_weight_keys)
+from verl.utils.profiler import (GPUMemoryLogger, log_gpu_memory_usage,
+                                 simple_timer)
 from verl.utils.torch_functional import check_device_is_available
-from verl.utils.vllm_utils import TensorLoRARequest, VLLMHijack, is_version_ge, patch_vllm_moe_model_weight_loader
+from verl.utils.vllm_utils import (TensorLoRARequest, VLLMHijack,
+                                   is_version_ge,
+                                   patch_vllm_moe_model_weight_loader)
 
 from .base import BaseShardingManager
 
@@ -83,7 +86,7 @@ class FSDPVLLMShardingManager(BaseShardingManager):
             self.inference_engine.llm_engine.model_executor.driver_worker.worker.model_runner
             if self.inference_engine
             else None
-        )
+        ) #获取vllm中使用的engine，用来支持做参数的同步，就是用这个内容来接收更新后的参数
 
         self.model_config = model_config
         self.rollout_config = rollout_config
@@ -336,7 +339,7 @@ class FSDPVLLMShardingManager(BaseShardingManager):
                 (name, param.to(device, non_blocking=True).full_tensor() if isinstance(param, DTensor) else param)
                 for name, param in updated_params.items()
             )
-        )
+        ) #使用model_runner中的内容来接收model的参数，这样就完成了参数的更新
 
         self.base_sync_done = True
         logger.info(f"vLLM load weights, loaded_params: {len(loaded_params) if loaded_params else -1}")

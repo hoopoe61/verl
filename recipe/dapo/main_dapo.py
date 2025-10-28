@@ -83,14 +83,17 @@ class TaskRunner:
         if config.actor_rollout_ref.actor.strategy in {"fsdp", "fsdp2"}:
             assert config.critic.strategy in {"fsdp", "fsdp2"}
             from verl.single_controller.ray import RayWorkerGroup
-            from verl.workers.fsdp_workers import ActorRolloutRefWorker, CriticWorker
+            from verl.workers.fsdp_workers import (ActorRolloutRefWorker,
+                                                   CriticWorker)
 
             ray_worker_group_cls = RayWorkerGroup
 
         elif config.actor_rollout_ref.actor.strategy == "megatron":
             assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
-            from verl.single_controller.ray.megatron import NVMegatronRayWorkerGroup
-            from verl.workers.megatron_workers import ActorRolloutRefWorker, CriticWorker
+            from verl.single_controller.ray.megatron import \
+                NVMegatronRayWorkerGroup
+            from verl.workers.megatron_workers import (ActorRolloutRefWorker,
+                                                       CriticWorker)
 
             ray_worker_group_cls = NVMegatronRayWorkerGroup
 
@@ -100,7 +103,7 @@ class TaskRunner:
         from verl.trainer.ppo.ray_trainer import ResourcePoolManager, Role
 
         role_worker_mapping = {
-            Role.ActorRollout: ray.remote(ActorRolloutRefWorker),
+            Role.ActorRollout: ray.remote(ActorRolloutRefWorker), #这个地方有没有分配资源，只是动态声明成ActorClass，并没有变成ActorHandle
             Role.Critic: ray.remote(CriticWorker),
         }
 
@@ -131,7 +134,7 @@ class TaskRunner:
 
         # reference model
         if config.algorithm.use_kl_in_reward or config.actor_rollout_ref.actor.use_kl_loss:
-            role_worker_mapping[Role.RefPolicy] = ray.remote(ActorRolloutRefWorker)
+            role_worker_mapping[Role.RefPolicy] = ray.remote(ActorRolloutRefWorker) #执行这个remote的操作会分配什么资源？
             mapping[Role.RefPolicy] = global_pool_id
 
         reward_fn = load_reward_manager(
@@ -156,12 +159,12 @@ class TaskRunner:
             config=config,
             tokenizer=tokenizer,
             processor=processor,
-            role_worker_mapping=role_worker_mapping,
-            resource_pool_manager=resource_pool_manager,
-            ray_worker_group_cls=ray_worker_group_cls,
+            role_worker_mapping=role_worker_mapping, #role_worker_mapping: 名称到ActorClass的一个映射关系
+            resource_pool_manager=resource_pool_manager, #ResourcePoolManager
+            ray_worker_group_cls=ray_worker_group_cls, #RayWorkerGroup
             reward_fn=reward_fn,
             val_reward_fn=val_reward_fn,
-        )
+        ) #这个地方只是创建了一个trainer，但是trainer本身没有占用GPU的资源
         trainer.init_workers()
         trainer.fit()
 

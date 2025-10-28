@@ -16,7 +16,8 @@
 
 from verl.utils.megatron_utils import unwrap_model
 
-from .util import postprocess_packed_seqs, preprocess_packed_seqs, recover_left_padding, remove_left_padding
+from .util import (postprocess_packed_seqs, preprocess_packed_seqs,
+                   recover_left_padding, remove_left_padding)
 
 
 def gptmodel_forward(
@@ -36,7 +37,7 @@ def gptmodel_forward(
     post_process = unwrap_model(model).post_process
     if pack_seqs:
         batch_size, seq_len = attention_mask.shape[:2]
-        input_ids_rmpad, packed_seq_params = preprocess_packed_seqs(input_ids, attention_mask, pre_process=pre_process)
+        input_ids_rmpad, packed_seq_params = preprocess_packed_seqs(input_ids, attention_mask, pre_process=pre_process) #里面会做input在tp 和 sp上的分配，tp是为了支持sp；
         input_ids_rmpad = input_ids_rmpad.contiguous()
         output_orig = model(
             input_ids=input_ids_rmpad,
@@ -44,6 +45,7 @@ def gptmodel_forward(
             position_ids=position_ids,
             packed_seq_params=packed_seq_params,
         )
+        # 针对pack seqs在后面再处理回来
         if post_process and logits_processor is not None:
             args = {
                 k: preprocess_packed_seqs(v, attention_mask, pre_process=True)[0]

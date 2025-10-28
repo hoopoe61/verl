@@ -27,19 +27,13 @@ from tqdm import tqdm
 
 from verl import DataProto
 from verl.trainer.ppo.core_algos import agg_loss
-from verl.trainer.ppo.metric_utils import (
-    compute_data_metrics,
-    compute_throughout_metrics,
-    compute_timing_metrics,
-    reduce_metrics,
-)
-from verl.trainer.ppo.ray_trainer import (
-    AdvantageEstimator,
-    RayPPOTrainer,
-    apply_kl_penalty,
-    compute_advantage,
-    compute_response_mask,
-)
+from verl.trainer.ppo.metric_utils import (compute_data_metrics,
+                                           compute_throughout_metrics,
+                                           compute_timing_metrics,
+                                           reduce_metrics)
+from verl.trainer.ppo.ray_trainer import (AdvantageEstimator, RayPPOTrainer,
+                                          apply_kl_penalty, compute_advantage,
+                                          compute_response_mask)
 from verl.utils.profiler import marked_timer
 
 
@@ -95,7 +89,7 @@ class RayDAPOTrainer(RayPPOTrainer):
         num_prompt_in_batch = 0
         num_gen_batches = 0
         for epoch in range(self.config.trainer.total_epochs):
-            for batch_dict in self.train_dataloader:
+            for batch_dict in self.train_dataloader: #这个dataloader是在DAPOTrainer上的；
                 metrics = {}
 
                 do_profile = (
@@ -276,7 +270,7 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                     # recompute old_log_probs
                     with marked_timer("old_log_prob", timing_raw, "blue"):
-                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
+                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch) #推理的原因导致这些数据都在cuda:0上？
                         entropys = old_log_prob.batch["entropys"]
                         response_masks = batch.batch["response_mask"]
                         loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode

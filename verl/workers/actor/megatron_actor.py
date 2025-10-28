@@ -29,7 +29,6 @@ import torch
 import torch.distributed
 from megatron.core import parallel_state as mpu
 from megatron.core.distributed import finalize_model_grads
-
 # from megatron.core.optimizer import DistributedOptimizer
 from megatron.core.optimizer import DistributedOptimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
@@ -37,15 +36,18 @@ from omegaconf import OmegaConf
 from torch import nn
 
 from verl import DataProto
-from verl.trainer.ppo.core_algos import agg_loss, compute_policy_loss, get_policy_loss_fn, kl_penalty
+from verl.trainer.ppo.core_algos import (agg_loss, compute_policy_loss,
+                                         get_policy_loss_fn, kl_penalty)
 from verl.utils.device import get_device_id, get_torch_device
 from verl.utils.megatron.pipeline_parallel import make_batch_generator
-from verl.utils.megatron.tensor_parallel import vocab_parallel_entropy, vocab_parallel_log_probs_from_logits
+from verl.utils.megatron.tensor_parallel import (
+    vocab_parallel_entropy, vocab_parallel_log_probs_from_logits)
 from verl.utils.megatron_utils import get_model_config
 from verl.utils.profiler import GPUMemoryLogger
 from verl.utils.profiler.profile import Profiler
 from verl.utils.py_functional import append_to_dict
-from verl.utils.seqlen_balancing import get_reverse_idx, rearrange_micro_batches
+from verl.utils.seqlen_balancing import (get_reverse_idx,
+                                         rearrange_micro_batches)
 from verl.utils.torch_functional import broadcast_dict_tensor
 from verl.workers.actor import BasePPOActor
 
@@ -125,7 +127,8 @@ class MegatronPPOActor(BasePPOActor):
         self.prof = Profiler(self.config.profile)
         self.use_fused_kernels = self.config.get("use_fused_kernels", False)
         if self.use_fused_kernels:
-            from verl.models.mcore.model_forward_fused import patch_fused_forward
+            from verl.models.mcore.model_forward_fused import \
+                patch_fused_forward
 
             for model in self.actor_module:
                 patch_fused_forward(model)
@@ -336,8 +339,9 @@ class MegatronPPOActor(BasePPOActor):
         """
         # broadcast from last pp rank to all other pp ranks
         # TODO: actually, we just need to control the sampling order.
+        # 我们需要根据dataloader，直接拿到这部分数据中的内容，包括mask、position_ids的内容
         mini_batch = data
-        broadcast_dict_tensor(
+        broadcast_dict_tensor( #为什么要做broadcast？最后一个rank的数据才是正确的数据？
             mini_batch.batch,
             src=mpu.get_pipeline_model_parallel_last_rank(),
             group=mpu.get_pipeline_model_parallel_group(),
@@ -384,7 +388,7 @@ class MegatronPPOActor(BasePPOActor):
         # compute input shapes for pp stages
         n_micro_batch = len(micro_batches)
 
-        forward_backward_func = get_forward_backward_func()
+        forward_backward_func = get_forward_backward_func() #使用Megatron中默认提供出来的func
 
         def loss_func(output, data, meta_info):
             # For memory efficiency
@@ -486,7 +490,7 @@ class MegatronPPOActor(BasePPOActor):
             return policy_loss, [metrics, ret_entropy]
 
         def forward_step(batch_iter, model):
-            batch = next(batch_iter)
+            batch = next(batch_iter) #先用这种方式获取数据，相当于原来的get_batch()的实现
             input_ids = batch["input_ids"]
             attention_mask = batch["attention_mask"].to(bool)
             position_ids = batch["position_ids"]
@@ -507,10 +511,11 @@ class MegatronPPOActor(BasePPOActor):
             label_mask[:, : -response_length - 1] = False
             label_mask[:, -1] = False
 
-            from verl.models.mcore import get_mcore_forward_fn, get_mcore_forward_fused_fn
+            from verl.models.mcore import (get_mcore_forward_fn,
+                                           get_mcore_forward_fused_fn)
 
             if self.use_fused_kernels:
-                forward_fn = get_mcore_forward_fused_fn(self.hf_config)
+                forward_fn = get_mcore_forward_fused_fn(self.hf_config) #这里面有对cp 和 sp情况下，数据的处理
                 # return dict of [logits, entropy]
                 output = forward_fn(
                     model,
@@ -523,17 +528,17 @@ class MegatronPPOActor(BasePPOActor):
                     labels_mask=label_mask,
                 )
             else:
-                forward_fn = get_mcore_forward_fn(self.hf_config)
+                forward_fn = get_mcore_forward_fn(self.hf_config) #这里面有对cp 和 sp情况下，数据的处理； 根据model来获取到model的前向过程；
 
                 def logits_processor(logits, label, label_mask):
                     assert logits.shape[:2] == label.shape[:2]
                     assert label.shape == label_mask.shape
                     ret = {}
                     if calculate_entropy:
-                        entropy = vocab_parallel_entropy(logits)
+                        entropy = vocab_parallel_entropy(logits) #使用logits计算entropy
                         ret["entropy"] = entropy
-                    log_probs = vocab_parallel_log_probs_from_logits(logits, label)
-                    log_probs = log_probs.masked_fill(~label_mask, 0.0)
+                    log_probs = vocab_parallel_log_probs_from_logits(logits, label) #用logits 和 label计算得到probs
+                    log_probs = log_probs.masked_fill(~label_mask, 0.0) #
                     ret["log_probs"] = log_probs
                     return ret
 
@@ -561,7 +566,8 @@ class MegatronPPOActor(BasePPOActor):
             return output, partial(loss_func, data=batch, meta_info=meta_info)
 
         # batch should be a list of batches inside micro-batches
-        batch_generator = make_batch_generator(micro_batches, vpp_size=len(self.actor_module))
+        # 这个地方变成了一个迭代器，就可以用作类似dataloader的东西
+        batch_generator = make_batch_generator(micro_batches, vpp_size=len(self.actor_module)) #对vpp情况的适配
 
         # TODO: we may use the new schedule instead
         # for flash-attn: (seq_len, batch_size, hidden_size) = (mbs*seq_len, 1, hidden_size)
@@ -628,7 +634,7 @@ class MegatronPPOActor(BasePPOActor):
             max_token_len = None
             if self.config.use_dynamic_bsz:
                 max_token_len = self.config.ppo_max_token_len_per_gpu * self.config.megatron.context_parallel_size
-            metric_micro_batch = self.forward_backward_batch(
+            metric_micro_batch = self.forward_backward_batch( #这里只要把数据处理好，就可以执行完成前向 和 后向的执行；metric_micor_batch得到的是loss_func返回的第二个结果：[metrics, ret_entropy]
                 data,
                 calculate_entropy=calculate_entropy,
                 use_dynamic_bsz=self.config.use_dynamic_bsz,
@@ -641,7 +647,7 @@ class MegatronPPOActor(BasePPOActor):
                 # Note that o[0] is metrics, o[1] is entropy, o[2] is response_mask
                 append_to_dict(metrics, metric[0])  # append the metric from this micro-batch to global metrics.
 
-            update_successful, grad_norm, num_zeros_in_grad = self.actor_optimizer.step()
+            update_successful, grad_norm, num_zeros_in_grad = self.actor_optimizer.step() #执行step的过程
             data = {"actor/grad_norm": grad_norm}
             append_to_dict(metrics, data)
 

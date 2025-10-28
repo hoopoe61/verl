@@ -42,37 +42,27 @@ from verl.utils import hf_processor, hf_tokenizer
 from verl.utils.activation_offload import enable_activation_offloading
 from verl.utils.checkpoint.fsdp_checkpoint_manager import FSDPCheckpointManager
 from verl.utils.config import omega_conf_to_dataclass
-from verl.utils.device import (
-    get_device_id,
-    get_device_name,
-    get_nccl_backend,
-    get_torch_device,
-    is_cuda_available,
-    is_npu_available,
-)
+from verl.utils.device import (get_device_id, get_device_name,
+                               get_nccl_backend, get_torch_device,
+                               is_cuda_available, is_npu_available)
 from verl.utils.flops_counter import FlopsCounter
 from verl.utils.fs import copy_to_local
-from verl.utils.fsdp_utils import (
-    CPUOffloadPolicy,
-    MixedPrecisionPolicy,
-    apply_fsdp2,
-    fsdp2_load_full_state_dict,
-    fsdp_version,
-    get_fsdp_wrap_policy,
-    get_init_weight_context_manager,
-    init_fn,
-    layered_summon_lora_params,
-    load_fsdp_model_to_gpu,
-    load_fsdp_optimizer,
-    offload_fsdp_model_to_cpu,
-    offload_fsdp_optimizer,
-)
+from verl.utils.fsdp_utils import (CPUOffloadPolicy, MixedPrecisionPolicy,
+                                   apply_fsdp2, fsdp2_load_full_state_dict,
+                                   fsdp_version, get_fsdp_wrap_policy,
+                                   get_init_weight_context_manager, init_fn,
+                                   layered_summon_lora_params,
+                                   load_fsdp_model_to_gpu, load_fsdp_optimizer,
+                                   offload_fsdp_model_to_cpu,
+                                   offload_fsdp_optimizer)
 from verl.utils.import_utils import import_external_libs
 from verl.utils.model import compute_position_id_with_mask
-from verl.utils.profiler import DistProfiler, DistProfilerExtension, log_gpu_memory_usage, simple_timer
+from verl.utils.profiler import (DistProfiler, DistProfilerExtension,
+                                 log_gpu_memory_usage, simple_timer)
 from verl.utils.profiler.performance import reduce_timing
 from verl.utils.py_functional import convert_to_regular_types
-from verl.workers.sharding_manager.fsdp_ulysses import FSDPUlyssesShardingManager
+from verl.workers.sharding_manager.fsdp_ulysses import \
+    FSDPUlyssesShardingManager
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
@@ -82,10 +72,10 @@ device_name = get_device_name()
 
 def create_device_mesh(world_size, fsdp_size):
     if fsdp_size < 0 or fsdp_size >= world_size:
-        device_mesh = init_device_mesh(device_name, mesh_shape=(world_size,), mesh_dim_names=["fsdp"])
+        device_mesh = init_device_mesh(device_name, mesh_shape=(world_size,), mesh_dim_names=["fsdp"]) #全部都用fsdp
     else:
         device_mesh = init_device_mesh(
-            device_name, mesh_shape=(world_size // fsdp_size, fsdp_size), mesh_dim_names=["ddp", "fsdp"]
+            device_name, mesh_shape=(world_size // fsdp_size, fsdp_size), mesh_dim_names=["ddp", "fsdp"] #部分用fsdp，部分用ddp？
         )
     return device_mesh
 
@@ -182,7 +172,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             if self.config.actor.ppo_micro_batch_size is not None:
                 self.config.actor.ppo_micro_batch_size //= (
                     self.device_mesh.size() // self.ulysses_sequence_parallel_size
-                )
+                ) #每个DP上要处理的mbs；
                 self.config.actor.ppo_micro_batch_size_per_gpu = self.config.actor.ppo_micro_batch_size
 
             if self.config.actor.ppo_micro_batch_size_per_gpu is not None:
@@ -222,9 +212,11 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
     ):
         from torch import optim
         from torch.distributed.fsdp import CPUOffload, MixedPrecision
-        from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForVision2Seq
+        from transformers import (AutoConfig, AutoModelForCausalLM,
+                                  AutoModelForVision2Seq)
 
-        from verl.utils.model import get_generation_config, print_model_size, update_model_config
+        from verl.utils.model import (get_generation_config, print_model_size,
+                                      update_model_config)
         from verl.utils.torch_dtypes import PrecisionType
 
         assert role in ["actor", "ref"]
@@ -291,7 +283,8 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
             # Apply Liger kernel to the model if use_liger is set to True
             if use_liger:
-                from liger_kernel.transformers.monkey_patch import _apply_liger_kernel_to_instance
+                from liger_kernel.transformers.monkey_patch import \
+                    _apply_liger_kernel_to_instance
 
                 _apply_liger_kernel_to_instance(model=actor_module)
 
@@ -300,7 +293,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 fused_kernel_options.get("impl_backend", None) if fused_kernel_options is not None else None
             )
 
-            apply_monkey_patch(
+            apply_monkey_patch( #通过里面的replace操作实现了对Ulysses的支持；
                 model=actor_module,
                 use_remove_padding=use_remove_padding,
                 ulysses_sp_size=self.ulysses_sequence_parallel_size,
@@ -368,7 +361,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         cpu_offload = None if role == "actor" else CPUOffload(offload_params=True)
         fsdp_strategy = self.config.actor.strategy
         if fsdp_strategy == "fsdp":
-            actor_module_fsdp = FSDP(
+            actor_module_fsdp = FSDP( #其实不是很清楚fsdp到底对actor_module做了什么修改；
                 actor_module,
                 cpu_offload=cpu_offload,
                 param_init_fn=init_fn,
@@ -413,7 +406,9 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         # TODO: add more optimizer args into config
         if role == "actor" and optim_config is not None:
-            from verl.utils.torch_functional import get_constant_schedule_with_warmup, get_cosine_schedule_with_warmup
+            from verl.utils.torch_functional import (
+                get_constant_schedule_with_warmup,
+                get_cosine_schedule_with_warmup)
 
             actor_optimizer = optim.AdamW(
                 actor_module_fsdp.parameters(),
@@ -479,7 +474,8 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         elif rollout_name == "vllm":
             from verl.workers.rollout.vllm_rollout import vLLMRollout
-            from verl.workers.sharding_manager.fsdp_vllm import FSDPVLLMShardingManager
+            from verl.workers.sharding_manager.fsdp_vllm import \
+                FSDPVLLMShardingManager
 
             log_gpu_memory_usage(f"Before building {rollout_name} rollout", logger=logger)
             local_path = copy_to_local(self.config.model.path, use_shm=self.config.model.get("use_shm", False))
@@ -505,8 +501,8 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             log_gpu_memory_usage(f"After building {rollout_name} rollout", logger=logger)
             full_params = torch.distributed.get_world_size() == 1
             rollout_sharding_manager = FSDPVLLMShardingManager(
-                module=self.actor_module_fsdp,
-                inference_engine=rollout.inference_engine,
+                module=self.actor_module_fsdp, #训练用的模型，可以方便地获取到训练的权重
+                inference_engine=rollout.inference_engine, #推理用的engine，可以通过这个engine方便地获取到对推理权重的引用
                 model_config=self.actor_model_config,
                 rollout_config=self.config.rollout,
                 full_params=full_params,
@@ -519,7 +515,6 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         elif rollout_name == "sglang":
             from verl.workers.rollout.sglang_rollout import SGLangRollout
-
             # NOTE(linjunrong): Due to recent fp8 support in SGLang. Now importing any symbol relate to
             # SGLang's model_runner would check CUDA device capability. However, due to verl's setting,
             # the main process of ray can not find any CUDA device, which would potentially lead to:
@@ -527,7 +522,8 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             # For this reason, sharding_manager.__init__ should not import FSDPSGLangShardingManager and
             # we import it here use the abs path.
             # check: https://github.com/sgl-project/sglang/blob/00f42707eaddfc2c0528e5b1e0094025c640b7a0/python/sglang/srt/layers/quantization/fp8_utils.py#L76
-            from verl.workers.sharding_manager.fsdp_sglang import FSDPSGLangShardingManager
+            from verl.workers.sharding_manager.fsdp_sglang import \
+                FSDPSGLangShardingManager
 
             local_path = copy_to_local(self.config.model.path)
             log_gpu_memory_usage(f"Before building {rollout_name} rollout", logger=logger)
@@ -620,7 +616,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 self.config.actor.use_fused_kernels = use_fused_kernels
             self.actor = DataParallelPPOActor(
                 config=self.config.actor, actor_module=self.actor_module_fsdp, actor_optimizer=self.actor_optimizer
-            )
+            ) #这个Actor
 
         if self._is_rollout:
             self.rollout, self.rollout_sharding_manager = self._build_rollout(
@@ -682,7 +678,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             load_fsdp_optimizer(optimizer=self.actor_optimizer, device_id=get_device_id())
 
         with self.ulysses_sharding_manager:
-            data = self.ulysses_sharding_manager.preprocess_data(data=data)
+            data = self.ulysses_sharding_manager.preprocess_data(data=data) #这个是按照sp维度进行的切分
             # perform training
             with Timer(name="update_policy", logger=None) as timer:
                 metrics = self.actor.update_policy(data=data)
@@ -733,12 +729,12 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         }
         prompts.meta_info.update(meta_info)
         timing_generate = {}
-        with self.rollout_sharding_manager:
+        with self.rollout_sharding_manager: #这个是支持实现权重更新的sharding manager；
             log_gpu_memory_usage("After entering rollout sharding manager", logger=logger)
 
             prompts = self.rollout_sharding_manager.preprocess_data(prompts)
             with simple_timer("generate_sequences", timing_generate):
-                output = self.rollout.generate_sequences(prompts=prompts)
+                output = self.rollout.generate_sequences(prompts=prompts) #根据promt生成response的内容，然后生成对应的mask 和 position id的内容，跟promt的部分拼接在一起；整体来说就是完成了整体input的生成；
 
             log_gpu_memory_usage("After rollout generation", logger=logger)
 
@@ -769,7 +765,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         is_lora = data.meta_info.pop("is_lora", False)
         adapter_ctx = self.actor.actor_module.disable_adapter() if is_lora else nullcontext()
-        data = data.to(get_device_id())
+        data = data.to(get_device_id()) #神奇的是这里的get_device_id()返回的都是cuda:0? 翻了一些issue，应该就是0，表示每个device有一个独立的GPU卡，所以都是cuda:0?
         # we should always recompute old_log_probs when it is HybridEngine
         data.meta_info["micro_batch_size"] = self.config.rollout.log_prob_micro_batch_size_per_gpu
         data.meta_info["max_token_len"] = self.config.rollout.log_prob_max_token_len_per_gpu
@@ -1156,7 +1152,8 @@ class CriticWorker(Worker, DistProfilerExtension):
         if self.rank == 0:
             print(f"Total steps: {total_steps}, num_warmup_steps: {num_warmup_steps}")
 
-        from verl.utils.torch_functional import get_constant_schedule_with_warmup, get_cosine_schedule_with_warmup
+        from verl.utils.torch_functional import (
+            get_constant_schedule_with_warmup, get_cosine_schedule_with_warmup)
 
         if warmup_style == "constant":
             critic_lr_scheduler = get_constant_schedule_with_warmup(
@@ -1429,7 +1426,8 @@ class RewardModelWorker(Worker, DistProfilerExtension):
 
     def _forward_micro_batch(self, micro_batch):
         if is_cuda_available:
-            from flash_attn.bert_padding import index_first_axis, pad_input, rearrange, unpad_input
+            from flash_attn.bert_padding import (index_first_axis, pad_input,
+                                                 rearrange, unpad_input)
         elif is_npu_available:
             from transformers.integrations.npu_flash_attention import (
                 index_first_axis,
@@ -1438,7 +1436,8 @@ class RewardModelWorker(Worker, DistProfilerExtension):
                 unpad_input,
             )
 
-        from verl.utils.ulysses import gather_outputs_and_unpad, ulysses_pad_and_slice_inputs
+        from verl.utils.ulysses import (gather_outputs_and_unpad,
+                                        ulysses_pad_and_slice_inputs)
 
         with torch.no_grad(), torch.autocast(device_type=device_name, dtype=torch.bfloat16):
             input_ids = micro_batch["input_ids"]
@@ -1584,7 +1583,8 @@ class RewardModelWorker(Worker, DistProfilerExtension):
     def compute_rm_score(self, data: DataProto):
         import itertools
 
-        from verl.utils.seqlen_balancing import get_reverse_idx, rearrange_micro_batches
+        from verl.utils.seqlen_balancing import (get_reverse_idx,
+                                                 rearrange_micro_batches)
 
         # Support all hardwares
         data = data.to(get_device_id())

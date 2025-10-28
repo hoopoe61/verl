@@ -40,24 +40,23 @@ from verl import DataProto
 from verl.experimental.dataset.sampler import AbstractCurriculumSampler
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 from verl.single_controller.base import Worker
-from verl.single_controller.ray import RayClassWithInitArgs, RayResourcePool, RayWorkerGroup
+from verl.single_controller.ray import (RayClassWithInitArgs, RayResourcePool,
+                                        RayWorkerGroup)
 from verl.single_controller.ray.base import create_colocated_worker_cls
 from verl.trainer.config import AlgoConfig
 from verl.trainer.ppo import core_algos
 from verl.trainer.ppo.core_algos import AdvantageEstimator, agg_loss
-from verl.trainer.ppo.metric_utils import (
-    compute_data_metrics,
-    compute_throughout_metrics,
-    compute_timing_metrics,
-    process_validation_metrics,
-)
+from verl.trainer.ppo.metric_utils import (compute_data_metrics,
+                                           compute_throughout_metrics,
+                                           compute_timing_metrics,
+                                           process_validation_metrics)
 from verl.trainer.ppo.reward import compute_reward, compute_reward_async
-from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path, should_save_ckpt_esi
+from verl.utils.checkpoint.checkpoint_manager import (find_latest_ckpt_path,
+                                                      should_save_ckpt_esi)
 from verl.utils.debug import marked_timer
-from verl.utils.metric import (
-    reduce_metrics,
-)
-from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
+from verl.utils.metric import reduce_metrics
+from verl.utils.seqlen_balancing import (get_seqlen_balanced_partitions,
+                                         log_seqlen_unbalance)
 from verl.utils.torch_functional import masked_mean
 from verl.utils.tracking import ValidationGenerationsLogger
 
@@ -103,7 +102,7 @@ class ResourcePoolManager:
             # that can utilize different WorkerGroup for differnt models
             resource_pool = RayResourcePool(
                 process_on_nodes=process_on_nodes, use_gpu=True, max_colocate_count=1, name_prefix=resource_pool_name
-            )
+            ) # process_on_nodes: 类似这种[8,8,8,8]
             self.resource_pool_dict[resource_pool_name] = resource_pool
 
         self._check_resource_available()
@@ -305,9 +304,9 @@ class RayPPOTrainer:
         self,
         config,
         tokenizer,
-        role_worker_mapping: dict[Role, WorkerType],
-        resource_pool_manager: ResourcePoolManager,
-        ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup,
+        role_worker_mapping: dict[Role, WorkerType], #role_worker_mapping: 名称到ActorClass的一个映射关系
+        resource_pool_manager: ResourcePoolManager, #ResourcePoolManager
+        ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup, #RayWorkerGroup
         processor=None,
         reward_fn=None,
         val_reward_fn=None,
@@ -575,7 +574,8 @@ class RayPPOTrainer:
         if train_sampler is None:
             train_sampler = create_rl_sampler(self.config.data, self.train_dataset)
         if collate_fn is None:
-            from verl.utils.dataset.rl_dataset import collate_fn as default_collate_fn
+            from verl.utils.dataset.rl_dataset import \
+                collate_fn as default_collate_fn
 
             collate_fn = default_collate_fn
 
@@ -830,20 +830,20 @@ class RayPPOTrainer:
         1. Ray resource pools from configuration
         2. Worker groups for each role (actor, critic, etc.)
         """
-        self.resource_pool_manager.create_resource_pool()
+        self.resource_pool_manager.create_resource_pool() #主要是把资源塞入到：resource_pool_dict中去；
 
-        self.resource_pool_to_cls = {pool: {} for pool in self.resource_pool_manager.resource_pool_dict.values()}
+        self.resource_pool_to_cls = {pool: {} for pool in self.resource_pool_manager.resource_pool_dict.values()} #values()是RayResourcePool，这个实现中只有一个RayResourcePool
 
         # create actor and rollout
         if self.hybrid_engine:
-            resource_pool = self.resource_pool_manager.get_resource_pool(Role.ActorRollout)
-            actor_rollout_cls = RayClassWithInitArgs(
-                cls=self.role_worker_mapping[Role.ActorRollout],
+            resource_pool = self.resource_pool_manager.get_resource_pool(Role.ActorRollout) #这个地方取到的就是只有一个resourcepool，都是对应着：global_pool
+            actor_rollout_cls = RayClassWithInitArgs( #整体上看初始化就是做一个封装，并没有特别的操作；特别的地方是在call的时候触发一个实例的创建
+                cls=self.role_worker_mapping[Role.ActorRollout], #这里得到的是：ray.remote(ActorRolloutRefWorker)，也就是一个ActorClass
                 config=self.config.actor_rollout_ref,
                 role="actor_rollout",
                 profile_option=self.config.trainer.npu_profile.options,
             )
-            self.resource_pool_to_cls[resource_pool]["actor_rollout"] = actor_rollout_cls
+            self.resource_pool_to_cls[resource_pool]["actor_rollout"] = actor_rollout_cls #需要关注actor_rollout_cls的call的时候；
         else:
             raise NotImplementedError
 
@@ -889,11 +889,23 @@ class RayPPOTrainer:
                 OmegaConf.select(self.config.trainer, "worker_nsight_options")
             )
         wg_kwargs["device_name"] = self.device_name
-
+        '''    
+        trainer = RayDAPOTrainer(
+            config=config,
+            tokenizer=tokenizer,
+            processor=processor,
+            role_worker_mapping=role_worker_mapping, #role_worker_mapping
+            resource_pool_manager=resource_pool_manager,
+            ray_worker_group_cls=ray_worker_group_cls,
+            reward_fn=reward_fn,
+            val_reward_fn=val_reward_fn,
+        )
+        '''
+        # resource_pool_to_cls: key值是resource_pool(当前实现只有global_pool), value: 是一个字典，字典的key是：str(标注actor的角色，比如actor_rollout这种)；字典的value是：RayClassWithInitArgs
         for resource_pool, class_dict in self.resource_pool_to_cls.items():
-            worker_dict_cls = create_colocated_worker_cls(class_dict=class_dict)
-            wg_dict = self.ray_worker_group_cls(
-                resource_pool=resource_pool,
+            worker_dict_cls = create_colocated_worker_cls(class_dict=class_dict) #这个地方就是把class_dict中的内容封装成一个新的RayClassWithInitArgs
+            wg_dict = self.ray_worker_group_cls( #RayWorkerGroup
+                resource_pool=resource_pool, #这个是一个完整的resource，因为只有一个全量的resource pool
                 ray_cls_with_init=worker_dict_cls,
                 **wg_kwargs,
             )
@@ -1026,7 +1038,7 @@ class RayPPOTrainer:
         # load actor
         self.actor_rollout_wg.load_checkpoint(
             actor_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load
-        )
+        ) #这个是一次集中加载的ckpt，只是替换成不同的函数，但是actorhanlder一直没有变？
         # load critic
         if self.use_critic:
             self.critic_wg.load_checkpoint(
@@ -1160,7 +1172,7 @@ class RayPPOTrainer:
 
                 # pass global_steps to trace
                 gen_batch.meta_info["global_steps"] = self.global_steps
-                gen_batch = gen_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+                gen_batch = gen_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True) #为了generate专门生成一个batch，并没有影响原始的batch
 
                 is_last_step = self.global_steps >= self.total_training_steps
 
@@ -1168,7 +1180,7 @@ class RayPPOTrainer:
                     # generate a batch
                     with marked_timer("gen", timing_raw, color="red"):
                         if not self.async_rollout_mode:
-                            gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
+                            gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch) #就是生成了数据；
                         else:
                             gen_batch_output = self.async_rollout_manager.generate_sequences(gen_batch)
                         timing_raw.update(gen_batch_output.meta_info["timing"])
@@ -1196,7 +1208,7 @@ class RayPPOTrainer:
                         [str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object
                     )
                     # repeat to align with repeated responses in rollout
-                    batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+                    batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True) #原始的batch进行repeat，为了跟generate的结果结合在一起；
                     batch = batch.union(gen_batch_output)
 
                     if "response_mask" not in batch.batch.keys():
@@ -1221,11 +1233,11 @@ class RayPPOTrainer:
                         if self.config.reward_model.launch_reward_fn_async:
                             future_reward = compute_reward_async.remote(data=batch, reward_fn=self.reward_fn)
                         else:
-                            reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
+                            reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn) #计算得到reward的值；
 
                     # recompute old_log_probs
                     with marked_timer("old_log_prob", timing_raw, color="blue"):
-                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
+                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch) #主要是old_log_prob的计算过程；
                         entropys = old_log_prob.batch["entropys"]
                         response_masks = batch.batch["response_mask"]
                         loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
@@ -1265,7 +1277,7 @@ class RayPPOTrainer:
                             if not self.ref_in_actor:
                                 ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
                             else:
-                                ref_log_prob = self.actor_rollout_wg.compute_ref_log_prob(batch)
+                                ref_log_prob = self.actor_rollout_wg.compute_ref_log_prob(batch) #计算compute_ref_log_prob的值；
                             batch = batch.union(ref_log_prob)
 
                     # compute values

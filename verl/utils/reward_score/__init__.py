@@ -47,7 +47,7 @@ def default_compute_score(
     elif data_source in ["lighteval/MATH", "DigitalLearningGmbH/MATH-lighteval", "HuggingFaceH4/MATH-500"]:
         from . import math
 
-        res = math.compute_score(solution_str, ground_truth)
+        res = math.compute_score(solution_str, ground_truth) #根据boxed中内容是否value相同作为得分的标准；
         # [Optional] Math-Verify Integration
         # For enhanced accuracy, consider utilizing Math-Verify (https://github.com/huggingface/Math-Verify).
         # Note: Math-Verify needs to be manually installed via pip: `pip install math-verify`.

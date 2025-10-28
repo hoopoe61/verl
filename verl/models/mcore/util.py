@@ -31,13 +31,13 @@ def preprocess_packed_seqs(
     """
     batch_size = input_ids.shape[0]
 
-    seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32)
+    seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32) #shape应该是[b, s]
     tp_size = mpu.get_tensor_model_parallel_world_size()
     cp_size = mpu.get_context_parallel_world_size()
     cp_rank = mpu.get_context_parallel_rank()
-    align_size = tp_size * cp_size * 2 if cp_size > 1 else tp_size
+    align_size = tp_size * cp_size * 2 if cp_size > 1 else tp_size #非cp的时候应该是为了sp考虑的，*2为了做cp上的负载均衡；
 
-    pad_size = (align_size - seqlens_in_batch % align_size) % align_size
+    pad_size = (align_size - seqlens_in_batch % align_size) % align_size #就是看看seqlens_in_batch差多少到align_size的整数倍
     seqlens_in_batch_padded = seqlens_in_batch + pad_size
     cu_seqlens = torch.zeros(batch_size + 1, dtype=torch.int32, device=input_ids.device)
     cu_seqlens[1:] = torch.cumsum(seqlens_in_batch, dim=0)

@@ -26,20 +26,26 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
 import verl.utils.torch_functional as verl_F
 from verl import DataProto
-from verl.trainer.ppo.core_algos import agg_loss, compute_policy_loss, get_policy_loss_fn, kl_penalty
-from verl.utils.device import get_device_name, is_cuda_available, is_npu_available
+from verl.trainer.ppo.core_algos import (agg_loss, compute_policy_loss,
+                                         get_policy_loss_fn, kl_penalty)
+from verl.utils.device import (get_device_name, is_cuda_available,
+                               is_npu_available)
 from verl.utils.fsdp_utils import FSDPModule, fsdp2_clip_grad_norm_
 from verl.utils.profiler import GPUMemoryLogger
 from verl.utils.py_functional import append_to_dict
-from verl.utils.seqlen_balancing import prepare_dynamic_batch, restore_dynamic_batch
+from verl.utils.seqlen_balancing import (prepare_dynamic_batch,
+                                         restore_dynamic_batch)
 from verl.utils.torch_functional import logprobs_from_logits
-from verl.utils.ulysses import gather_outputs_and_unpad, ulysses_pad, ulysses_pad_and_slice_inputs
+from verl.utils.ulysses import (gather_outputs_and_unpad, ulysses_pad,
+                                ulysses_pad_and_slice_inputs)
 from verl.workers.actor import BasePPOActor
 
 if is_cuda_available:
-    from flash_attn.bert_padding import index_first_axis, pad_input, rearrange, unpad_input
+    from flash_attn.bert_padding import (index_first_axis, pad_input,
+                                         rearrange, unpad_input)
 elif is_npu_available:
-    from transformers.integrations.npu_flash_attention import index_first_axis, pad_input, rearrange, unpad_input
+    from transformers.integrations.npu_flash_attention import (
+        index_first_axis, pad_input, rearrange, unpad_input)
 
 
 __all__ = ["DataParallelPPOActor"]
@@ -125,7 +131,8 @@ class DataParallelPPOActor(BasePPOActor):
                     ).transpose(0, 1)
 
                 if "image_bound" in multi_modal_inputs:
-                    from verl.utils.dataset.vision_utils import process_multi_modal_inputs_for_minicpmo
+                    from verl.utils.dataset.vision_utils import \
+                        process_multi_modal_inputs_for_minicpmo
 
                     multi_modal_inputs = process_multi_modal_inputs_for_minicpmo(
                         input_ids, attention_mask, position_ids, cu_seqlens, multi_modal_inputs
@@ -145,7 +152,7 @@ class DataParallelPPOActor(BasePPOActor):
                             sp_size=self.ulysses_sequence_parallel_size,
                         )
                     else:
-                        input_ids_rmpad, position_ids_rmpad, pad_size = ulysses_pad_and_slice_inputs(
+                        input_ids_rmpad, position_ids_rmpad, pad_size = ulysses_pad_and_slice_inputs( #针对Ulysses的输入pad 和 切分，但是切分的时候没有做负载均衡的考虑
                             input_ids_rmpad,
                             position_ids_rmpad=position_ids_rmpad,
                             sp_size=self.ulysses_sequence_parallel_size,
@@ -165,7 +172,7 @@ class DataParallelPPOActor(BasePPOActor):
                     extra_args["return_dict"] = True
 
                 output = self.actor_module(
-                    input_ids=input_ids_rmpad,
+                    input_ids=input_ids_rmpad, #数据是做了切分的数据, ulysses的支持靠的是actor_module中的Attention做了monkey patch
                     attention_mask=None,
                     position_ids=position_ids_rmpad,
                     **multi_modal_inputs,
@@ -185,7 +192,7 @@ class DataParallelPPOActor(BasePPOActor):
                     inplace_backward = True
                     if calculate_entropy:
                         inplace_backward = False
-                    log_probs = logprobs_from_logits(
+                    log_probs = logprobs_from_logits( #使用logits计算得到logp的过程，这里会导致差异放大？
                         logits=logits_rmpad,
                         labels=input_ids_rmpad_rolled,
                         inplace_backward=inplace_backward,
@@ -317,7 +324,7 @@ class DataParallelPPOActor(BasePPOActor):
         non_tensor_select_keys = ["multi_modal_inputs"] if has_multi_modal_inputs else []
 
         data = data.select(batch_keys=select_keys, non_tensor_batch_keys=non_tensor_select_keys)
-
+        #进一步进行mbs的详细控制；
         if use_dynamic_bsz:
             max_token_len = data.meta_info["max_token_len"] * self.ulysses_sequence_parallel_size
             micro_batches, batch_idx_list = prepare_dynamic_batch(data, max_token_len=max_token_len)
@@ -450,7 +457,7 @@ class DataParallelPPOActor(BasePPOActor):
                     else:
                         policy_loss = pg_loss
 
-                    if self.config.use_kl_loss:
+                    if self.config.use_kl_loss: #是否用kl loss，用来反馈
                         ref_log_prob = model_inputs["ref_log_prob"]
                         # compute kl loss
                         kld = kl_penalty(
@@ -458,7 +465,7 @@ class DataParallelPPOActor(BasePPOActor):
                         )
                         kl_loss = agg_loss(loss_mat=kld, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
 
-                        policy_loss = policy_loss + kl_loss * self.config.kl_loss_coef
+                        policy_loss = policy_loss + kl_loss * self.config.kl_loss_coef #将policy loss叠加上kl loss的作用；DAPO中没有使用；
                         micro_batch_metrics["actor/kl_loss"] = kl_loss.detach().item()
                         micro_batch_metrics["actor/kl_coef"] = self.config.kl_loss_coef
 

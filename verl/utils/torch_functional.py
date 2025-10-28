@@ -127,9 +127,9 @@ def logprobs_from_logits_v2(logits: torch.FloatTensor, labels):
         logprobs_labels = []
         for row_logits, row_labels in zip(logits, labels, strict=True):  # loop to reduce peak mem consumption
             row_logprobs = F.log_softmax(row_logits, dim=-1)
-            row_logprobs_labels = row_logprobs.gather(dim=-1, index=row_labels.unsqueeze(-1)).squeeze(-1)
-            logprobs_labels.append(row_logprobs_labels)
-        logprobs_labels = torch.stack(logprobs_labels)
+            row_logprobs_labels = row_logprobs.gather(dim=-1, index=row_labels.unsqueeze(-1)).squeeze(-1) #这里只是用row_labels作为索引来获取了一下对应label的prob，并没有做交叉
+            logprobs_labels.append(row_logprobs_labels) #被选中label的概率
+        logprobs_labels = torch.stack(logprobs_labels) #全部实际label所在token的概率的值
     return logprobs_labels
 
 

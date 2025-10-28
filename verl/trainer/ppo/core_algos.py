@@ -302,7 +302,7 @@ def compute_grpo_outcome_advantage(
             if norm_adv_by_std_in_grpo:
                 scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
             else:
-                scores[i] = scores[i] - id2mean[index[i]]
+                scores[i] = scores[i] - id2mean[index[i]] #跟平均值的偏离大小，做为得分的情况；通过这种方式来替换value model；
         scores = scores.unsqueeze(-1) * response_mask
 
     return scores, scores
@@ -765,9 +765,9 @@ def compute_policy_loss(
 
     negative_approx_kl = log_prob - old_log_prob
     # Clamp negative_approx_kl for stability
-    negative_approx_kl = torch.clamp(negative_approx_kl, min=-20.0, max=20.0)
+    negative_approx_kl = torch.clamp(negative_approx_kl, min=-20.0, max=20.0) #进行截断操作
     ratio = torch.exp(negative_approx_kl)
-    ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+    ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask) #mask 和 mean的操作；
 
     pg_losses1 = -advantages * ratio
     if cliprange_low is None:

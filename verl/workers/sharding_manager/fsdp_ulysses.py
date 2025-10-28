@@ -19,7 +19,8 @@ from torch.distributed.device_mesh import DeviceMesh
 
 from verl import DataProto
 from verl.protocol import all_gather_data_proto
-from verl.utils.ulysses import get_ulysses_sequence_parallel_group, set_ulysses_sequence_parallel_group
+from verl.utils.ulysses import (get_ulysses_sequence_parallel_group,
+                                set_ulysses_sequence_parallel_group)
 
 from .base import BaseShardingManager
 
@@ -58,7 +59,7 @@ class FSDPUlyssesShardingManager(BaseShardingManager):
         if self.device_mesh is not None:
             group = self.device_mesh["sp"].get_group()
 
-            all_gather_data_proto(data=data, process_group=group)
+            all_gather_data_proto(data=data, process_group=group) #从这里理解的话，也就是说使用fsdp，数据也会按照fsdp维度进行了切分(跟普通的dp没有区别)；
         return data
 
     def postprocess_data(self, data: DataProto) -> DataProto:

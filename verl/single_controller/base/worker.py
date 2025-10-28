@@ -52,9 +52,12 @@ class WorkerHelper:
 
     @staticmethod
     def _get_free_port():
+        '''
         with socket.socket() as sock:
             sock.bind(("", 0))
             return sock.getsockname()[1]
+        '''
+        return 29500
 
     def get_availale_master_addr_port(self):
         return self._get_node_ip().strip("[]"), str(self._get_free_port())
@@ -108,7 +111,8 @@ class Worker(WorkerHelper):
             }
 
             if os.getenv("WG_BACKEND", None) == "ray":
-                from verl.single_controller.base.register_center.ray import create_worker_group_register_center
+                from verl.single_controller.base.register_center.ray import \
+                    create_worker_group_register_center
 
                 self.register_center = create_worker_group_register_center(
                     name=register_center_name, info=rank_zero_info

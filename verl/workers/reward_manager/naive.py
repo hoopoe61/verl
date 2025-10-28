@@ -80,7 +80,7 @@ class NaiveRewardManager:
             num_turns = data_item.non_tensor_batch.get("__num_turns__", None)
             extra_info["num_turns"] = num_turns
 
-            score = self.compute_score(
+            score = self.compute_score( #调用具体的函数来执行分数的计算过程；
                 data_source=data_source,
                 solution_str=response_str,
                 ground_truth=ground_truth,
