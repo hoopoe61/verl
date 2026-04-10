@@ -341,7 +341,7 @@ class MegatronPPOActor(BasePPOActor):
         # TODO: actually, we just need to control the sampling order.
         # 我们需要根据dataloader，直接拿到这部分数据中的内容，包括mask、position_ids的内容
         mini_batch = data
-        broadcast_dict_tensor( #为什么要做broadcast？最后一个rank的数据才是正确的数据？
+        broadcast_dict_tensor( #为什么要做broadcast？只是为了保证所有pp上的数据顺序是一致的？但是只有PP=0才需要最原始的数据？后面的都是拿的hidden state？难道是为了保证attention_mask等的顺序是一致的？
             mini_batch.batch,
             src=mpu.get_pipeline_model_parallel_last_rank(),
             group=mpu.get_pipeline_model_parallel_group(),

@@ -198,7 +198,7 @@ class FSDPVLLMShardingManager(BaseShardingManager):
 
             log_gpu_memory_usage("Before state_dict() in sharding manager memory", logger=logger)
             if self.offload_param:
-                load_fsdp_model_to_gpu(self.module)
+                load_fsdp_model_to_gpu(self.module) #在进行update之前，先把offload的训练参数从cpu加载到gpu中去；
 
             peft_config = None
             peft_model = getattr(self.module, "_fsdp_wrapped_module", self.module)
@@ -217,11 +217,11 @@ class FSDPVLLMShardingManager(BaseShardingManager):
                     self.inference_engine.wake_up()
 
             # update model params
-            self.update_params(params, peft_config=peft_config)
+            self.update_params(params, peft_config=peft_config) #进行参数的更新；
             log_gpu_memory_usage("After sync model weights in sharding manager", logger=logger)
             del params
             if self.offload_param:
-                offload_fsdp_model_to_cpu(self.module)
+                offload_fsdp_model_to_cpu(self.module) #更新完成后，把训练的参数从gpu重新放回到cpu上去；也就是两者有一段时间是都在显存上的；
             get_torch_device().empty_cache()
 
             if (

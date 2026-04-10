@@ -616,12 +616,12 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 self.config.actor.use_fused_kernels = use_fused_kernels
             self.actor = DataParallelPPOActor(
                 config=self.config.actor, actor_module=self.actor_module_fsdp, actor_optimizer=self.actor_optimizer
-            ) #这个Actor
+            ) #训练过程中使用的就是：self.actor_module_fsdp
 
         if self._is_rollout:
             self.rollout, self.rollout_sharding_manager = self._build_rollout(
                 trust_remote_code=self.config.model.get("trust_remote_code", False)
-            )
+            ) #rollout_sharding_manager中会使用self.actor_module_fsdp作为输入
 
         if self._is_ref:
             local_path = copy_to_local(self.config.model.path, use_shm=use_shm)
@@ -732,7 +732,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         with self.rollout_sharding_manager: #这个是支持实现权重更新的sharding manager；
             log_gpu_memory_usage("After entering rollout sharding manager", logger=logger)
 
-            prompts = self.rollout_sharding_manager.preprocess_data(prompts)
+            prompts = self.rollout_sharding_manager.preprocess_data(prompts) #看是否要做all gather的操作；
             with simple_timer("generate_sequences", timing_generate):
                 output = self.rollout.generate_sequences(prompts=prompts) #根据promt生成response的内容，然后生成对应的mask 和 position id的内容，跟promt的部分拼接在一起；整体来说就是完成了整体input的生成；
 
@@ -748,7 +748,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         output = output.to("cpu")
 
         # clear kv cache
-        get_torch_device().empty_cache()
+        get_torch_device().empty_cache() #这个地方只是把kv cache清理掉了，但是rollout中的模型等内容清理了吗？
         return output
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
@@ -757,7 +757,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         # when is_lora is True, we use the actor without lora applied to calculate the log_prob
         # which is mostly used for ref log_prob calculation
         assert self._is_actor
-        if self._is_offload_param:
+        if self._is_offload_param: #如果开启了这个选项，那么每次执行完一个阶段，都会直接offload数据到cpu，等用到的时候再加载回到gpu？
             load_fsdp_model_to_gpu(self.actor_module_fsdp)
 
         # Support all hardwares
@@ -765,7 +765,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         is_lora = data.meta_info.pop("is_lora", False)
         adapter_ctx = self.actor.actor_module.disable_adapter() if is_lora else nullcontext()
-        data = data.to(get_device_id()) #神奇的是这里的get_device_id()返回的都是cuda:0? 翻了一些issue，应该就是0，表示每个device有一个独立的GPU卡，所以都是cuda:0?
+        data = data.to(get_device_id()) #神奇的是这里的get_device_id()返回的都是cuda:0? 翻了一些issue，应该就是0，表示每个device有一个独立的GPU卡，所以都是cuda:0
         # we should always recompute old_log_probs when it is HybridEngine
         data.meta_info["micro_batch_size"] = self.config.rollout.log_prob_micro_batch_size_per_gpu
         data.meta_info["max_token_len"] = self.config.rollout.log_prob_max_token_len_per_gpu

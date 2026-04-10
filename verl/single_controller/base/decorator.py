@@ -79,7 +79,7 @@ def _split_args_kwargs_data_proto(chunks, *args, **kwargs):
     splitted_args = []
     for arg in args:
         assert isinstance(arg, DataProto | DataProtoFuture)
-        splitted_args.append(arg.chunk(chunks=chunks))
+        splitted_args.append(arg.chunk(chunks=chunks)) #按照DP进行了切分
 
     splitted_kwargs = {}
     for key, val in kwargs.items():
@@ -140,7 +140,8 @@ def dispatch_megatron_compute(worker_group, *args, **kwargs):
     """
     User passes in dp data. The data is dispatched to all tp/pp ranks with the same dp
     """
-    from verl.single_controller.base.megatron.worker_group import MegatronWorkerGroup
+    from verl.single_controller.base.megatron.worker_group import \
+        MegatronWorkerGroup
 
     assert isinstance(worker_group, MegatronWorkerGroup), (
         f"worker_group must be MegatronWorkerGroup, Got {type(worker_group)}"
@@ -155,12 +156,12 @@ def dispatch_megatron_compute(worker_group, *args, **kwargs):
     def _transform_data(obj_list, worker_group):
         assert isinstance(obj_list, tuple | list) and len(obj_list) == worker_group.dp_size
         transformed_data = []
-        for i in range(worker_group.world_size):
-            local_dp_rank = worker_group.get_megatron_rank_info(rank=i).dp_rank
+        for i in range(worker_group.world_size): #这个过程会把dp size转成world size维度，也就是让每个rank都拿到自己对应dp rank对应的数据；不太清楚在pp rank>0的情况下会怎么处理这些数据；
+            local_dp_rank = worker_group.get_megatron_rank_info(rank=i).dp_rank #根据dp rank拿到对应的数据内容；
             transformed_data.append(obj_list[local_dp_rank])
         return transformed_data
 
-    all_args = tuple([_transform_data(arg, worker_group) for arg in args])
+    all_args = tuple([_transform_data(arg, worker_group) for arg in args]) #从dp size扩展到了world size维度
     all_kwargs = {key: _transform_data(val, worker_group) for key, val in kwargs.items()}
 
     return all_args, all_kwargs
@@ -170,7 +171,8 @@ def collect_megatron_compute(worker_group, output):
     """
     Only collect the data from the tp=0 and pp=last and every dp ranks
     """
-    from verl.single_controller.base.megatron.worker_group import MegatronWorkerGroup
+    from verl.single_controller.base.megatron.worker_group import \
+        MegatronWorkerGroup
 
     assert isinstance(worker_group, MegatronWorkerGroup)
     output_in_dp = []
@@ -186,7 +188,8 @@ def dispatch_megatron_compute_data_proto(worker_group, *args, **kwargs):
     """
     All the args and kwargs must be DataProto. The batch will be chunked by dp_size and passed to each rank
     """
-    from verl.single_controller.base.megatron.worker_group import MegatronWorkerGroup
+    from verl.single_controller.base.megatron.worker_group import \
+        MegatronWorkerGroup
 
     assert isinstance(worker_group, MegatronWorkerGroup)
 
@@ -232,7 +235,8 @@ def dispatch_megatron_pp_as_dp(worker_group, *args, **kwargs):
     """
     treat pp as dp.
     """
-    from verl.single_controller.base.megatron.worker_group import MegatronWorkerGroup
+    from verl.single_controller.base.megatron.worker_group import \
+        MegatronWorkerGroup
 
     assert isinstance(worker_group, MegatronWorkerGroup)
 
@@ -273,7 +277,8 @@ def collect_megatron_pp_as_dp(worker_group, output):
     """
     treat pp as dp. Only collect data on tp=0
     """
-    from verl.single_controller.base.megatron.worker_group import MegatronWorkerGroup
+    from verl.single_controller.base.megatron.worker_group import \
+        MegatronWorkerGroup
 
     assert isinstance(worker_group, MegatronWorkerGroup)
     output_in_dp = []
@@ -288,7 +293,8 @@ def collect_megatron_pp_only(worker_group, output):
     """
     Only collect output of megatron pp. This is useful when examine weight names as they are identical in tp/dp
     """
-    from verl.single_controller.base.megatron.worker_group import MegatronWorkerGroup
+    from verl.single_controller.base.megatron.worker_group import \
+        MegatronWorkerGroup
 
     assert isinstance(worker_group, MegatronWorkerGroup)
     output_in_pp = []
@@ -300,7 +306,8 @@ def collect_megatron_pp_only(worker_group, output):
 
 
 def dispatch_megatron_pp_as_dp_data_proto(worker_group, *args, **kwargs):
-    from verl.single_controller.base.megatron.worker_group import MegatronWorkerGroup
+    from verl.single_controller.base.megatron.worker_group import \
+        MegatronWorkerGroup
 
     assert isinstance(worker_group, MegatronWorkerGroup)
 
@@ -311,7 +318,8 @@ def dispatch_megatron_pp_as_dp_data_proto(worker_group, *args, **kwargs):
 
 
 def collect_megatron_pp_as_dp_data_proto(worker_group, output):
-    from verl.single_controller.base.megatron.worker_group import MegatronWorkerGroup
+    from verl.single_controller.base.megatron.worker_group import \
+        MegatronWorkerGroup
 
     assert isinstance(worker_group, MegatronWorkerGroup)
 

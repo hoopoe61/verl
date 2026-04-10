@@ -89,7 +89,7 @@ class RayDAPOTrainer(RayPPOTrainer):
         num_prompt_in_batch = 0
         num_gen_batches = 0
         for epoch in range(self.config.trainer.total_epochs):
-            for batch_dict in self.train_dataloader: #这个dataloader是在DAPOTrainer上的；
+            for batch_dict in self.train_dataloader: #这个dataloader是在DAPOTrainer上的；batch_size=self.config.data.get("gen_batch_size", self.config.data.train_batch_size)
                 metrics = {}
 
                 do_profile = (
@@ -127,7 +127,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                 with marked_timer("step", timing_raw):
                     # generate a batch
                     with marked_timer("gen", timing_raw, "red"):
-                        gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
+                        gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch) #具体执行的过程
                         timing_raw.update(gen_batch_output.meta_info["timing"])
                         gen_batch_output.meta_info.pop("timing", None)
 
@@ -270,7 +270,7 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                     # recompute old_log_probs
                     with marked_timer("old_log_prob", timing_raw, "blue"):
-                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch) #推理的原因导致这些数据都在cuda:0上？
+                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch) #
                         entropys = old_log_prob.batch["entropys"]
                         response_masks = batch.batch["response_mask"]
                         loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
@@ -283,7 +283,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                     if self.use_reference_policy:
                         # compute reference log_prob
                         with marked_timer("ref", timing_raw, "olive"):
-                            ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
+                            ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch) #没有看到做参数的offload？
                             batch = batch.union(ref_log_prob)
 
                     # compute values

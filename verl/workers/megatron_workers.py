@@ -380,7 +380,7 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
         print(f"rollout and sharding manager init done sharding_manager: {sharding_manager}")
         return rollout, sharding_manager
 
-    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL) #这个地方主要完成参数的复制以后；
     def init_model(self):
         if self.config.model.get("external_lib", None) is not None:
             # This is used to import external_lib into the huggingface systems
@@ -413,7 +413,7 @@ class ActorRolloutRefWorker(MegatronWorker, DistProfilerExtension):
                 self.actor_optimizer_scheduler,
                 self.actor_model_config,
                 self.actor_optim_config,
-            ) = self._build_model_optimizer(
+            ) = self._build_model_optimizer( #这一层是绑定在ActorRolloutRefWorker上的实现，不是在MegatronPPOActor上的；所以要想用的话还是得迁移过去才行；
                 model_path=self.config.model.path,
                 optim_config=optim_config,
                 override_model_config=override_model_config,

@@ -325,7 +325,7 @@ def pad_sequence_to_length(tensors, max_seq_len, pad_token_id, left_pad=False):
         return tensors
     # (0, max_seq_len - tensors.shape[-1]) means right pad to max_seq_length and no left pad
     pad_tuple = (max_seq_len - tensors.shape[-1], 0) if left_pad else (0, max_seq_len - tensors.shape[-1])
-    return F.pad(tensors, pad_tuple, "constant", pad_token_id)
+    return F.pad(tensors, pad_tuple, "constant", pad_token_id) #根据左右的padding方式，选择padding的值；
 
 
 def postprocess_data(

@@ -42,7 +42,7 @@ def get_random_string(length: int) -> str:
     return "".join(random.choice(letters_digits) for _ in range(length))
 
 
-def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, blocking):
+def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, blocking): #实际调度func的地方
     class Functor:
         def __call__(this, *args, **kwargs):
             args, kwargs = dispatch_fn(self, *args, **kwargs)
@@ -119,6 +119,7 @@ class RayResourcePool(ResourcePool):
             bundle[device_name] = 1 #默认就是分配1个GPU
             if self.accelerator_type is not None:
                 bundle[self.accelerator_type] = 1e-4
+        # 两个节点，每个节点上2个GPU的时候，self._store: [2, 2]; pg_scheme: [[{'CPU': 1, 'GPU': 1}, {'CPU': 1, 'GPU': 1}], [{'CPU': 1, 'GPU': 1}, {'CPU': 1, 'GPU': 1}]]
         pg_scheme = [[bundle.copy() for _ in range(process_count)] for process_count in self._store]
 
         lifetime = "detached" if self.detached else None
@@ -126,7 +127,7 @@ class RayResourcePool(ResourcePool):
         pgs = [
             placement_group(bundles=bundles, strategy=strategy, name=pg_name_prefix + str(idx), lifetime=lifetime)
             for idx, bundles in enumerate(pg_scheme)
-        ]
+        ] #总计得到了两个placement group，一个是：[{'CPU': 1, 'GPU': 1}, {'CPU': 1, 'GPU': 1}], 另外一个也是：[{'CPU': 1, 'GPU': 1}, {'CPU': 1, 'GPU': 1}]，也就是按照节点划分出来的；
 
         ray.get([pg.ready() for pg in pgs])
 
@@ -286,6 +287,14 @@ class RayWorkerGroup(WorkerGroup):
             ray_wait_register_center_timeout: Timeout for waiting on register center
             **kwargs: Additional keyword arguments
         """
+        '''
+        调用逻辑：
+        wg_dict = self.ray_worker_group_cls( #RayWorkerGroup
+                resource_pool=resource_pool, #这个是一个完整的resource，因为只有一个全量的resource pool
+                ray_cls_with_init=worker_dict_cls, #新生成的一个RayClassWithInitArgs
+                **wg_kwargs,
+            )
+        '''
         super().__init__(resource_pool=resource_pool, **kwargs)
         self.ray_cls_with_init = ray_cls_with_init
         self.name_prefix = get_random_string(length=6) if name_prefix is None else name_prefix
@@ -305,15 +314,15 @@ class RayWorkerGroup(WorkerGroup):
             assert self._is_init_with_detached_workers
             self._worker_names = worker_names
 
-        if self._is_init_with_detached_workers:
-            self._init_with_detached_workers(worker_names=worker_names, worker_handles=worker_handles)
+        if self._is_init_with_detached_workers: #prefix情况下走的是这个地方的逻辑
+            self._init_with_detached_workers(worker_names=worker_names, worker_handles=worker_handles) #这个地方看起来就是把已经有的worker_handles全量引用给新的RayWorkerGroup；
         else:
             self._init_with_resource_pool(
                 resource_pool=resource_pool, ray_cls_with_init=ray_cls_with_init, bin_pack=bin_pack, detached=detached
-            )
+            ) #这个地方会完成实际的资源分配，pg(每个节点对应一个pg)上执行了remote操作，Actorclass通过指定placement_group_bundle_idx进行了具体的资源分配
 
-        if ray_cls_with_init is not None:
-            self._bind_worker_method(self.ray_cls_with_init.cls, func_generator)
+        if ray_cls_with_init is not None: #这个是干什么用的？
+            self._bind_worker_method(self.ray_cls_with_init.cls, func_generator) #这个地方的加工，是把self.ray_cls_with_init.cls的相关method属性通过func_generator封装以后，赋值给RayWorkerGroup来使用；
 
         self.wg_dict = None
         self.method_names = []
@@ -353,7 +362,7 @@ class RayWorkerGroup(WorkerGroup):
         strategy = "PACK"
         if bin_pack:
             strategy = "STRICT_PACK"
-        pgs = resource_pool.get_placement_groups(strategy=strategy, device_name=self.device_name) #这个地方获取到了pg；
+        pgs = resource_pool.get_placement_groups(strategy=strategy, device_name=self.device_name) #按照节点对资源进行了划分，分成了节点数量个，每个(2个GPU的节点)是：[{'CPU': 1, 'GPU': 1}, {'CPU': 1, 'GPU': 1}]
         world_size = resource_pool.world_size
         self._world_size = world_size
         # cia.add_kwarg("_world_size", world_size)
@@ -361,9 +370,9 @@ class RayWorkerGroup(WorkerGroup):
 
         rank = -1
         local_world_size = resource_pool.store[0]
-        for pg_idx, pg in enumerate(sort_placement_group_by_node_ip(pgs)): #估计每个只是
+        for pg_idx, pg in enumerate(sort_placement_group_by_node_ip(pgs)): #pgs的长度是节点数量个，每个pg(2个GPU的节点)是：[{'CPU': 1, 'GPU': 1}, {'CPU': 1, 'GPU': 1}]
             assert local_world_size <= pg.bundle_count, f"when generating for {self.name_prefix}, for the "
-            for local_rank in range(local_world_size):
+            for local_rank in range(local_world_size): #实际上的效果就是每个local rank会得到{'CPU': 1, 'GPU': 1}的资源
                 rank += 1
 
                 # we pass in environment variable at option so that Worker can use environment variable to set
@@ -402,15 +411,19 @@ class RayWorkerGroup(WorkerGroup):
                 if detached:
                     ray_cls_with_init.update_options({"lifetime": "detached"})
 
+                # ray_cls_with_init：RayClassWithInitArgs(cls=remote_cls)初始化得到的一个类的示例，下面的ray_cls_with_init()过程会执行RayClassWithInitArgs中定义的__call__函数
+                # 建立起： 一个具体的actor 和 对应placement group 和 其中bundle的绑定关系，相当于进行了资源的预留；返回的worker就是一个具体actor的remote()结果；
+                # 执行的主要内容是：self.cls.options(**options).remote(*self.args, **self.kwargs)，就是设置了options 和 执行了remote的过程；
+                # worker是一个actor handler，通过这个handler可以调用actor中的任意一个方法；
                 # create a worker
-                worker = ray_cls_with_init(
-                    placement_group=pg,
-                    placement_group_bundle_idx=local_rank,
+                worker = ray_cls_with_init( #这个是使用RayClassWithInitArgs来具体生成一个worker，在call的时候会发挥具体的作用
+                    placement_group=pg, #所占用的节点维度的pg；
+                    placement_group_bundle_idx=local_rank, #在pg中的实际位置；
                     use_gpu=use_gpu,
                     num_gpus=num_gpus,
                     device_name=self.device_name,
                 )
-                self._workers.append(worker)
+                self._workers.append(worker) #把所有的workers都集中在一起，这也是为什么叫RayWorkerGroup的原因；
                 self._worker_names.append(name)
 
                 if rank == 0:
@@ -474,13 +487,13 @@ class RayWorkerGroup(WorkerGroup):
             A new RayWorkerGroup instance
         """
         worker_group = cls(
-            resource_pool=None,
+            resource_pool=None, #这个地方是None
             ray_cls_with_init=ray_cls_with_init,
             name_prefix=name_prefix,
             worker_names=worker_names,
             worker_handles=worker_handles,
             **kwargs,
-        )
+        ) #返回的还是一个RayWorkerGroup
         return worker_group
 
     def spawn(self, prefix_set):
@@ -508,13 +521,13 @@ class RayWorkerGroup(WorkerGroup):
             new_worker_group = self.from_detached(
                 name_prefix=self.name_prefix,
                 worker_names=self._worker_names,
-                worker_handles=self._workers,
+                worker_handles=self._workers, #这个是之前使用整体已经创建出来的workers
                 ray_cls_with_init=self.ray_cls_with_init,
                 profile_steps=self.profile_steps,
                 worker_nsight_options=self.worker_nsight_options,
-            )
+            ) #这个地方还会再做一次RayWorkerGroup的生成，但是资源已经分配出去了怎么办？
 
-            _rebind_actor_methods(new_worker_group, prefix)
+            _rebind_actor_methods(new_worker_group, prefix) #把prefix的内容再给去掉，然后再把method给了这个new_worker_group：也还是一个RayWorkerGroup
             new_worker_group_dict[prefix] = new_worker_group
         return new_worker_group_dict
 
@@ -646,13 +659,13 @@ class RayWorkerGroup(WorkerGroup):
         # and their lengths match len(self._workers), we'll distribute each
         # element in these lists to the corresponding worker
         # print(f"execute_all_async: method {method_name}({args}, {kwargs})")
-        length = len(self._workers)
+        length = len(self._workers) #workers的长度是world_size大小
         if all(isinstance(arg, list) for arg in args) and all(isinstance(kwarg, list) for kwarg in kwargs.values()):
             if all(len(arg) == length for arg in args) and all(len(kwarg) == length for kwarg in kwargs.values()):
                 # print(f"splitting args and kwargs into {length} shards")
                 result = []
                 for i in range(length):
-                    sliced_args = tuple(arg[i] for arg in args)
+                    sliced_args = tuple(arg[i] for arg in args) #这里对参数进行了切分，args经过之前的处理变成了world_size大小(最开始有可能是dp size的大小)，所以就可以通过这种方式做切分就可以每个worker一份数据；
                     sliced_kwargs = {k: v[i] for k, v in kwargs.items()}
                     result.append(
                         self._execute_remote_single_worker(self._workers[i], method_name, *sliced_args, **sliced_kwargs)
@@ -790,10 +803,10 @@ def create_colocated_worker_cls(class_dict: dict[str, RayClassWithInitArgs]):
     # now monkey-patch the methods from inner class to WorkerDict
     for key, user_defined_cls in cls_dict.items():
         user_defined_cls = _unwrap_ray_remote(user_defined_cls)
-        _bind_workers_method_to_parent(WorkerDict, key, user_defined_cls)
+        _bind_workers_method_to_parent(WorkerDict, key, user_defined_cls) #把user_defined_cls定义的需要有MAGIC_ATTR属性的method都设置到WorkerDict中去
 
     remote_cls = ray.remote(WorkerDict)
-    remote_cls = RayClassWithInitArgs(cls=remote_cls)
+    remote_cls = RayClassWithInitArgs(cls=remote_cls) #变成RayClassWithInitArgs的作用是什么？
     return remote_cls
 
 

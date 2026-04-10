@@ -901,15 +901,59 @@ class RayPPOTrainer:
             val_reward_fn=val_reward_fn,
         )
         '''
+        '''
+        开启了reward情况下wg_dict的属性：
+        dir of wg_dict: ['__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', '__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_bind_worker_method', '_block_until_all_workers_alive', '_checker_thread', '_execute_remote_single_worker', '_init_with_detached_workers', '_init_with_resource_pool', '_is_init_with_detached_workers', '_is_worker_alive', '_master_addr', '_master_port', '_procecss_dispatch_config', '_ray_wait_register_center_timeout', '_worker_names', '_workers', '_world_size', 'actor_rollout_compute_log_prob', 'actor_rollout_compute_ref_log_prob', 'actor_rollout_execute_func_rank_zero', 'actor_rollout_execute_with_func_generator', 'actor_rollout_generate_sequences', 'actor_rollout_init_model', 'actor_rollout_load_checkpoint', 'actor_rollout_save_checkpoint', 'actor_rollout_start_profile', 'actor_rollout_stop_profile', 'actor_rollout_update_actor', 'device_name', 'execute_all', 'execute_all_async', 'execute_all_sync', 'execute_func_rank_zero', 'execute_rank_zero', 'execute_rank_zero_async', 'execute_rank_zero_sync', 'execute_with_func_generator', 'from_detached', 'fuse', 'fused_worker_execute_fn_name', 'fused_worker_used', 'master_address', 'master_port', 'method_names', 'name_prefix', 'profile_steps', 'ray_cls_with_init', 'rm_compute_rm_score', 'rm_execute_func_rank_zero', 'rm_execute_with_func_generator', 'rm_init_model', 'rm_start_profile', 'rm_stop_profile', 'spawn', 'spawn_fused', 'start_worker_aliveness_check', 'sub_cls_name', 'wg_dict', 'worker_names', 'worker_nsight_options', 'workers', 'world_size']
+        关闭了reward情况下wg_dict的属性：
+        dir of wg_dict: ['__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', '__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_bind_worker_method', '_block_until_all_workers_alive', '_checker_thread', '_execute_remote_single_worker', '_init_with_detached_workers', '_init_with_resource_pool', '_is_init_with_detached_workers', '_is_worker_alive', '_master_addr', '_master_port', '_procecss_dispatch_config', '_ray_wait_register_center_timeout', '_worker_names', '_workers', '_world_size', 'actor_rollout_compute_log_prob', 'actor_rollout_compute_ref_log_prob', 'actor_rollout_execute_func_rank_zero', 'actor_rollout_execute_with_func_generator', 'actor_rollout_generate_sequences', 'actor_rollout_init_model', 'actor_rollout_load_checkpoint', 'actor_rollout_save_checkpoint', 'actor_rollout_start_profile', 'actor_rollout_stop_profile', 'actor_rollout_update_actor', 'device_name', 'execute_all', 'execute_all_async', 'execute_all_sync', 'execute_func_rank_zero', 'execute_rank_zero', 'execute_rank_zero_async', 'execute_rank_zero_sync', 'execute_with_func_generator', 'from_detached', 'fuse', 'fused_worker_execute_fn_name', 'fused_worker_used', 'master_address', 'master_port', 'method_names', 'name_prefix', 'profile_steps', 'ray_cls_with_init', 'spawn', 'spawn_fused', 'start_worker_aliveness_check', 'sub_cls_name', 'wg_dict', 'worker_names', 'worker_nsight_options', 'workers', 'world_size']
+        '''
         # resource_pool_to_cls: key值是resource_pool(当前实现只有global_pool), value: 是一个字典，字典的key是：str(标注actor的角色，比如actor_rollout这种)；字典的value是：RayClassWithInitArgs
+        # resource_pool_to_cls中会把属于同一个resouce pool的class都放到这个class_dict中；然后create_colocated_worker_cls这个过程会把属于同一个resource pool的所有class的属性都配置给worker_dict_cls，这样就可以一个remote actorclass执行所有的内容；
         for resource_pool, class_dict in self.resource_pool_to_cls.items():
-            worker_dict_cls = create_colocated_worker_cls(class_dict=class_dict) #这个地方就是把class_dict中的内容封装成一个新的RayClassWithInitArgs
-            wg_dict = self.ray_worker_group_cls( #RayWorkerGroup
+            # 开启reward model情况下，class_dict的内容是：{'actor_rollout': <verl.single_controller.ray.base.RayClassWithInitArgs object at *>, 'rm': <verl.single_controller.ray.base.RayClassWithInitArgs object at *>}
+            worker_dict_cls = create_colocated_worker_cls(class_dict=class_dict) #这个地方就是把class_dict中跟有MAGIC_ATTR的属性的method封装成到一个新的RayClassWithInitArgs中
+            wg_dict = self.ray_worker_group_cls( #用包含全量内容的RayClassWithInitArgs + resource pool，生成得到新的RayWorkerGroup，做了pg分配情况下workers的集合；
                 resource_pool=resource_pool, #这个是一个完整的resource，因为只有一个全量的resource pool
                 ray_cls_with_init=worker_dict_cls,
                 **wg_kwargs,
             )
-            spawn_wg = wg_dict.spawn(prefix_set=class_dict.keys())
+            '''
+            def spawn(self, prefix_set):
+                """Spawn to a dictionary of worker groups, each with a subset of method with prefix.
+
+                Args:
+                    prefix_set: Set of prefixes to create worker groups for
+
+                Returns:
+                    Dictionary of worker groups keyed by prefix
+                """
+                if self.fused_worker_used:
+                    return self.spawn_fused(prefix_set)
+
+                def _rebind_actor_methods(worker_group, actor_name):
+                    prefix: str = actor_name + "_"
+                    for method_name in dir(worker_group):
+                        if method_name.startswith(prefix):
+                            original_method_name = method_name.removeprefix(prefix)
+                            method = getattr(worker_group, method_name)
+                            setattr(worker_group, original_method_name, method)
+
+                new_worker_group_dict = {}
+                for prefix in prefix_set:
+                    new_worker_group = self.from_detached(
+                        name_prefix=self.name_prefix,
+                        worker_names=self._worker_names,
+                        worker_handles=self._workers,
+                        ray_cls_with_init=self.ray_cls_with_init,
+                        profile_steps=self.profile_steps,
+                        worker_nsight_options=self.worker_nsight_options,
+                    )
+
+                    _rebind_actor_methods(new_worker_group, prefix)
+                    new_worker_group_dict[prefix] = new_worker_group
+                return new_worker_group_dict
+            '''
+            spawn_wg = wg_dict.spawn(prefix_set=class_dict.keys()) #按照前缀把不同的remote method又进行了一次分配；相当于原来是一个完整的RayWorkerGroup，现在是按照前缀分成了多个不同的RayWorkerGroup
             all_wg.update(spawn_wg)
 
         if self.use_critic:
@@ -925,8 +969,8 @@ class RayPPOTrainer:
             self.rm_wg.init_model()
 
         # we should create rollout at the end so that vllm can have a better estimation of kv cache memory
-        self.actor_rollout_wg = all_wg["actor_rollout"]
-        self.actor_rollout_wg.init_model()
+        self.actor_rollout_wg = all_wg["actor_rollout"] #type(self.actor_rollout_wg): RayWorkerGroup
+        self.actor_rollout_wg.init_model() #RayWorkerGroup中的内容本来也是把各个内容整合过来的，init_model原本属于ActorRolloutRefWorker
 
         # create async rollout manager and request scheduler
         self.async_rollout_mode = False
@@ -1135,7 +1179,7 @@ class RayPPOTrainer:
         self.max_steps_duration = 0
 
         for epoch in range(self.config.trainer.total_epochs):
-            for batch_dict in self.train_dataloader:
+            for batch_dict in self.train_dataloader: #这个是提供数据的地方
                 metrics = {}
                 timing_raw = {}
 
@@ -1168,7 +1212,7 @@ class RayPPOTrainer:
                 gen_batch = batch.pop(
                     batch_keys=batch_keys_to_pop,
                     non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
-                )
+                ) #input_ids、attention_mask等是在什么地方处理得到的？
 
                 # pass global_steps to trace
                 gen_batch.meta_info["global_steps"] = self.global_steps

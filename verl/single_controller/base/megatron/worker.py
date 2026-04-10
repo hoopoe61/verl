@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from verl.single_controller.base.worker import DistGlobalInfo, DistRankInfo, Worker
+from verl.single_controller.base.worker import (DistGlobalInfo, DistRankInfo,
+                                                Worker)
 
 
 class MegatronWorker(Worker):
@@ -89,7 +90,7 @@ class MegatronWorker(Worker):
         self.architectures = getattr(hf_config, "architectures", None)
         if self.rank == 0:
             print(f"Model config after override: {hf_config}")
-        tf_config = hf_to_mcore_config(hf_config, dtype, **override_transformer_config)
+        tf_config = hf_to_mcore_config(hf_config, dtype, **override_transformer_config) #这是把hf的config转成Megatron用的config，给后面model创建使用的
 
         if use_mbridge:
             from verl.models.mcore.mbridge import AutoBridge

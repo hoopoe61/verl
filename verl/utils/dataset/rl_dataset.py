@@ -259,9 +259,9 @@ class RLHFDataset(Dataset):
 
         else:
             raw_prompt = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
-            model_inputs = self.tokenizer(raw_prompt, return_tensors="pt", add_special_tokens=False)
+            model_inputs = self.tokenizer(raw_prompt, return_tensors="pt", add_special_tokens=False) #这个过程会通过tokenizer中的多层调用(最终落在_pad中)，得到input_ids和attention_mask, 不过mask应该都是1，再加上pad的一些0 mask；
             input_ids = model_inputs.pop("input_ids")
-            attention_mask = model_inputs.pop("attention_mask")
+            attention_mask = model_inputs.pop("attention_mask") #这里的mask就是针对promot的简单mask数据；
 
         input_ids, attention_mask = verl_F.postprocess_data(
             input_ids=input_ids,
@@ -270,7 +270,7 @@ class RLHFDataset(Dataset):
             pad_token_id=self.tokenizer.pad_token_id,
             left_pad=True,
             truncation=self.truncation,
-        )
+        ) #对promt数据进行了处理，得到截断或pad以后的文本 和 mask；
 
         if self.processor is not None and "Qwen2VLImageProcessor" in self.processor.image_processor.__class__.__name__:
             from verl.models.transformers.qwen2_vl import get_rope_index
@@ -287,13 +287,13 @@ class RLHFDataset(Dataset):
             ]  # (1, 3, seq_len)
 
         else:
-            position_ids = compute_position_id_with_mask(attention_mask)
+            position_ids = compute_position_id_with_mask(attention_mask) #得到position_ids信息；
 
-        row_dict["input_ids"] = input_ids[0]
+        row_dict["input_ids"] = input_ids[0] #去除tokenizer过程中返回的batch_size维度，得到单个样本的input_ids；
         row_dict["attention_mask"] = attention_mask[0]
         row_dict["position_ids"] = position_ids[0]
 
-        raw_prompt_ids = self.tokenizer.encode(raw_prompt, add_special_tokens=False)
+        raw_prompt_ids = self.tokenizer.encode(raw_prompt, add_special_tokens=False) #目前看应该是给推理引擎使用的；
         if len(raw_prompt_ids) > self.max_prompt_length:
             if self.truncation == "left":
                 raw_prompt_ids = raw_prompt_ids[-self.max_prompt_length :]
